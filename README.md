@@ -15,3 +15,6 @@ Dog fetches ore, and like a good boy he brings it back.
     * Warning: Without this argument, the turtle may stray out of the loaded area, and the turtle currently will not remember its coordinates.
 2. `Max Depth: number`
     * Optional, sets the maximum dig depth
+
+# Warning
+Do not read the code its bad please I didn't plan any of it
