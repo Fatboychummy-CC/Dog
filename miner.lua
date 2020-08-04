@@ -14,16 +14,24 @@ posWindow.clear()
 
 -- printwindow stuffs
 local oprint, oprintError = print, printError
-local function print(...)
+local function print(box, ...)
   local oldwindow = term.redirect(printWindow)
   term.setBackgroundColor(colors.black)
-  oprint(...)
+  if box then
+    oprint(string.format("[%s]", box), ...)
+  else
+    oprint()
+  end
   term.redirect(oldwindow)
 end
-local function printError(...)
+local function printError(box, ...)
   local oldwindow = term.redirect(printWindow)
   term.setBackgroundColor(colors.black)
-  oprintError(...)
+  if box then
+    oprintError(string.format("[%s]", box), ...)
+  else
+    oprintError()
+  end
   term.redirect(oldwindow)
 end
 
@@ -34,21 +42,22 @@ local function updateFuel(Needed, Have)
   local oldwindow = term.redirect(fuelWindow)
 
   local repHave  = string.rep(' ', math.floor((Have / startFuel) * maxX + 0.5))
-  local repNeed  = string.rep(' ', math.floor((Needed / startFuel) * maxX + 0.5))
+  local repNeed  = string.rep('\127', math.floor((Needed / startFuel) * maxX + 0.5))
   -- length is maxX
-  local function draw(x)
+  local function draw(x, fg, bg)
+    term.setBackgroundColor(bg)
+    term.setTextColor(fg)
     for i = 1, 3 do
       term.setCursorPos(1, i)
       term.write(x)
     end
   end
-  term.setBackgroundColor(colors.black)
-  draw(repClear)
-  term.setBackgroundColor(colors.green)
-  draw(repHave)
-  term.setBackgroundColor(colors.red)
-  draw(repNeed)
+  draw(repClear, colors.white,  colors.black)
+  draw(repHave,  colors.white,  colors.green)
+  draw(repNeed,  colors.orange, colors.green)
 
+  term.setTextColor(colors.white)
+  term.setBackgroundColor(colors.black)
   term.redirect(oldwindow)
 end
 
@@ -67,9 +76,9 @@ end
 --[[ Le main programme ]]
 local function PrintUsage(i)
   local sOwnName = shell.getRunningProgram()
-  printError(string.format("Bad command line argument #%d.", i))
-  printError("Usage:")
-  printError(string.format("  %s [number maxOffset] [number maxDepth]", sOwnName))
+  printError("ARG", string.format("Bad command line argument #%d.", i))
+  printError("ARG", "Usage:")
+  printError("ARG", string.format("  %s [number maxOffset] [number maxDepth]", sOwnName))
   error("Requires pickaxe and block scanner.", 0)
 end
 
@@ -97,10 +106,10 @@ local function CheckSide(sSide, sType, sMethod)
       end
     end
   else
-    print(string.format("No peripheral of type '%s' on side %s.", sType, sSide))
+    print("CheckSide", string.format("No peripheral of type '%s' on side %s.", sType, sSide))
     return
   end
-  print(string.format("No method '%s' in peripheral on side %s.", sMethod, sSide))
+  print("CheckSide", string.format("No method '%s' in peripheral on side %s.", sMethod, sSide))
 end
 
 local function CheckPresence(sType, sMethod)
@@ -166,12 +175,11 @@ local function BlockEQ(tBlock, sName, sDamage)
 end
 
 local function main()
-  print("In main")
+  print("Main", "Init")
   -- if the arguments were bad, stop
   if not CheckArgs() then return end
 
   local scan = CheckPresence("plethora:scanner", "scan")
-  print(type(scan))
   local pos = {
     x = 0,
     y = 0,
@@ -184,18 +192,43 @@ local function main()
     south = {x = 0,  y = 0, z = 1,  right = "west",  left = "east"},
     west  = {x = -1, y = 0, z = 0,  right = "north", left = "south"}
   }
+  local tSteps = {n = 0}
+  function tSteps.Push(x, y, z)
+    expect(1, x, "number")
+    expect(2, y, "number")
+    expect(3, z, "number")
+
+    tSteps.n = tSteps.n + 1
+    print("Retracer", "Push", tSteps.n, string.format("x:%d y:%d z:%d", x, y, z))
+    tSteps[tSteps.n] = {x = x, y = y, z = z}
+    while tSteps.n > 10 do
+      print("Retracer", "Remove 1")
+      table.remove(tSteps, 1)
+      tSteps.n = tSteps.n - 1
+    end
+  end
+  function tSteps.Pop()
+    if tSteps.n == 0 then return end
+    print("Retracer", "Pop", tSteps.n)
+    local Vector3 = tSteps[tSteps.n]
+    tSteps[tSteps.n] = nil
+    tSteps.n = tSteps.n - 1
+    return Vector3.x, Vector3.y, Vector3.z
+  end
+
   local nMaxOffset = tonumber(tArgs[1]) or math.huge
   local nMaxDepth = tonumber(tArgs[2]) or 256
-  print(nMaxOffset, nMaxDepth)
+  print("Main", string.format("Offset:%d, depth:%d", nMaxOffset, nMaxDepth))
 
   local GoHome
+  local debounce = true
   local function CheckFuel()
     local FuelNeededForReturn = math.abs(pos.x) + math.abs(pos.y) + math.abs(pos.z) + 1
     updateFuel(FuelNeededForReturn, turtle.getFuelLevel())
-    if FuelNeededForReturn >= turtle.getFuelLevel() then
-      print("Our next move will cause us to run out of fuel!")
-      GoHome(true)
-      error("Out of fuel.")
+    if FuelNeededForReturn >= turtle.getFuelLevel() and debounce then
+      debounce = false
+      print("Fueler", "Our next move will cause us to run out of fuel!")
+      GoHome(true, "Out of fuel.")
     end
     updatePos(pos.x, pos.y, pos.z, pos.facing)
   end
@@ -252,13 +285,11 @@ local function main()
   local function Right()
     turtle.turnRight()
     pos.facing = tOffsets[pos.facing].right
-    print("Right -->", pos.facing)
     updatePos(pos.x, pos.y, pos.z, pos.facing)
   end
   local function Left()
     turtle.turnLeft()
     pos.facing = tOffsets[pos.facing].left
-    print("Left -->", pos.facing)
     updatePos(pos.x, pos.y, pos.z, pos.facing)
   end
   -- determine the fastest direction for turning
@@ -294,24 +325,26 @@ local function main()
       return true
     end
   end
-  local function GoTo(x, y, z, sDir, bYLast)
+  local function GoTo(x, y, z, sDir, bYLast, bNoRecord)
     expect(1, x, "number")
     expect(2, y, "number")
     expect(3, z, "number")
     expect(4, sDir, "string", "nil")
     expect(5, bYLast, "boolean", "nil")
+    if not bNoRecord then
+      tSteps.Push(x, y, z)
+    end
+
     if sDir then
       expect(1000, tOffsets[sDir], "table")
     end
     if compare(x, y, z) then
       duplicateCount = duplicateCount + 1
-      if duplicateCount >= 10 then
-        error("We issued the same command over ten times. We are stuck.")
-      elseif duplicateCount >= 5 then
-        printError("We've issued the same movement command five times or more.  Are we stuck?")
+      if duplicateCount >= 5 then
+        printError("GOTO", "We've issued the same movement command five times or more.  Are we stuck?")
       end
     end
-    print(string.format("GOTO ORDER: x:%d, y:%d, z:%d", x, y, z))
+    print("GOTO", string.format("x:%d, y:%d, z:%d", x, y, z))
 
     local function X()
       -- equalize X axis
@@ -422,11 +455,9 @@ local function main()
       end
     end
     if ClosestOre then
-      print("Closest ore at:", ComputeAbsoluteFromRelative(ClosestOre.x, ClosestOre.y, ClosestOre.z))
-      print("Turtle pos:", pos.x, pos.y, pos.z, pos.facing)
-      print("Relative  :", ClosestOre.x, ClosestOre.y, ClosestOre.z)
+      print("Ores", string.format("rx:%d, ry:%d, rz:%d", ClosestOre.x, ClosestOre.y, ClosestOre.z))
     else
-      print("No ore seen yet.")
+      print("Ores", "Nothing visible.")
     end
     return ClosestOre, ClosestDistance
   end
@@ -456,14 +487,25 @@ local function main()
     return {x = pos.x, y = pos.y, z = pos.z, facing = pos.facing}
   end
 
-  GoHome = function(halt)
+  local function retrace()
+    repeat
+      local x, y, z = tSteps.Pop()
+      if x then
+        GoTo(x, y, z, nil, false, true)
+        GoTo(x, y, z, nil, true, true)
+      end
+    until not x
+  end
+
+  GoHome = function(halt, err)
     -- if we are able to drop the items
     if bCanDrop and not halt then
       -- go home, drop items, return to where we were
       local currentPos = CopyPos()
       if GoTo(0, 0, 0, sDropDir, true) then
         if GoTo(0, -3, 0, sDropDir) then
-          error("Stuck!")
+          printError("GoHome", "Warning: Stuck! Attempting to fix.")
+          retrace()
         end
         GoTo(0, 0, 0, sDropDir, true)
       end
@@ -473,11 +515,12 @@ local function main()
       -- go home, stop.
       if GoTo(0, 0, 0, nil, true) then
         if GoTo(0, -3, 0) then
-          error("Stuck!")
+          printError("GoHome", "Warning: Stuck! Attempting to fix.")
+          retrace()
         end
         GoTo(0, 0, 0, nil, true)
       end
-      error("Stop.", 0)
+      error(err and err or "Stop.", 0)
     end
   end
 
@@ -494,12 +537,9 @@ local function main()
     if Ore then
       local px, py, pz = ComputeAbsoluteFromRelative(Ore.x, Ore.y, Ore.z)
       if GoTo(px, py, pz) then
-        GoHome(true)
-        print("kanye west")
-        return true
+        GoHome(true, "LEEEEEERRRRRROOOOOOOOOYYYYYYY JENNNKIIINNNSSS")
       end
     else
-      print("No ore.")
       return
     end
     return MineOres(tOreDict)
@@ -519,12 +559,12 @@ local function main()
   local lastY = 0
 
   -- dig down
-  print("Dig start")
+  print("Main", "Dig start")
   while math.abs(pos.y) <= nMaxDepth do
-    print("Iteration", lastY)
+    print("Main", "Y depth:", pos.y)
     -- if the inventory is full
     if CheckInventory() then
-      if GoHome() then print("Out of space.") break end
+      if GoHome() then print("Main", "Out of space.") break end
     end
 
     -- go down
@@ -538,13 +578,12 @@ local function main()
     GoTo(0, lastY, 0)
   end
   -- go home
-  GoHome(true)
-  print("Exited OK.")
+  GoHome(true, "Done mining.")
 end
 
 local bOK, sErr = pcall(main)
 if not bOK then
-  printError(sErr)
+  printError("System", sErr)
 end
 print()
 term.setCursorPos(1, maxY)
