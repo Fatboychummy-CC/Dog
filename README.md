@@ -12,5 +12,6 @@ Dog fetches ore, and like a good boy he brings it back.
 # Command-line arguments
 1. `Max Offset: number`
     * Optional, sets the maximum distance the turtle can stray from its center-point. Basic block-scanners have a range of 8, keep this in mind.
+    * Warning: Without this argument, the turtle may stray out of the loaded area, and the turtle currently will not remember its coordinates.
 2. `Max Depth: number`
     * Optional, sets the maximum dig depth
