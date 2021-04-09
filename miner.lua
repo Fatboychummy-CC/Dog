@@ -588,6 +588,7 @@ local function main()
     ["railcraft:ore"] = {0,1,2,3,4},
     ["railcraft:ore_magic"] = {0},
     ["tconstruct:ore"] = {0,1},
+    ["forestry:resources"] = {0,1,2},
   }
   local lastY = 0
 
