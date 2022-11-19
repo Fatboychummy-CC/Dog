@@ -589,6 +589,8 @@ local function main()
     ["railcraft:ore_magic"] = {0},
     ["tconstruct:ore"] = {0,1},
     ["forestry:resources"] = {0,1,2},
+    ["dimensionalpocketsii:block_dimensional_ore"] = {0},
+    ["mekanism:oreblock"] {0,1,2},
   }
   local lastY = 0
 
