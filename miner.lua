@@ -571,6 +571,7 @@ local function main()
     ["bno:ore_netherlapis"] = {0},
     ["dungeontactics:nethergold_ore"] = {0},
     ["ic2:blockmetal"] = {0,1,2,3},
+    ["ic2:resource"] = {1,2,3,4},
     ["appliedenergistics2:quartz_ore"] = {0},
     ["appliedenergistics2:charged_quartz_ore"] = {0},
     ["dungeontactics:silver_ore"] = {0},
