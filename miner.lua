@@ -1,8 +1,10 @@
 local tArgs = table.pack(...)
 local expect = require("cc.expect").expect
 
+local flattened = false
+
 --[[ Windows ]]
-local maxX, maxY = term.getSize()
+local maxX, maxY  = term.getSize()
 local printWindow = window.create(term.current(), 1, maxY - 5, maxX, 7)
 local fuelWindow  = window.create(term.current(), 1, maxY - 9, maxX, 3)
 local posWindow   = window.create(term.current(), 1, maxY - 11, maxX, 1)
@@ -24,6 +26,7 @@ local function print(box, ...)
   end
   term.redirect(oldwindow)
 end
+
 local function printError(box, ...)
   local oldwindow = term.redirect(printWindow)
   term.setBackgroundColor(colors.black)
@@ -41,8 +44,8 @@ local startFuel = turtle.getFuelLevel()
 local function updateFuel(Needed, Have)
   local oldwindow = term.redirect(fuelWindow)
 
-  local repHave  = string.rep(' ', math.floor((Have / startFuel) * maxX + 0.5))
-  local repNeed  = string.rep('\127', math.floor((Needed / startFuel) * maxX + 0.5))
+  local repHave = string.rep(' ', math.floor((Have / startFuel) * maxX + 0.5))
+  local repNeed = string.rep('\127', math.floor((Needed / startFuel) * maxX + 0.5))
   -- length is maxX
   local function draw(x, fg, bg)
     term.setBackgroundColor(bg)
@@ -52,9 +55,10 @@ local function updateFuel(Needed, Have)
       term.write(x)
     end
   end
-  draw(repClear, colors.white,  colors.black)
-  draw(repHave,  colors.white,  colors.green)
-  draw(repNeed,  colors.orange, colors.green)
+
+  draw(repClear, colors.white, colors.black)
+  draw(repHave, colors.white, colors.green)
+  draw(repNeed, colors.orange, colors.green)
 
   term.setTextColor(colors.white)
   term.setBackgroundColor(colors.black)
@@ -94,8 +98,8 @@ local function CheckArgs()
 end
 
 local function CheckSide(sSide, sType, sMethod)
-  expect(1, sSide,   "string")
-  expect(2, sType,   "string")
+  expect(1, sSide, "string")
+  expect(2, sType, "string")
   expect(3, sMethod, "string")
 
   if peripheral.getType(sSide) == sType then
@@ -113,7 +117,7 @@ local function CheckSide(sSide, sType, sMethod)
 end
 
 local function CheckPresence(sType, sMethod)
-  expect(1, sType,   "string")
+  expect(1, sType, "string")
   expect(2, sMethod, "string")
 
   local Left = CheckSide("left", sType, sMethod)
@@ -124,9 +128,9 @@ local function CheckPresence(sType, sMethod)
 end
 
 local function GetBlockAt(x, y, z, tScanData)
-  expect(1, x,         "number")
-  expect(2, y,         "number")
-  expect(3, z,         "number")
+  expect(1, x, "number")
+  expect(2, y, "number")
+  expect(3, z, "number")
   expect(4, tScanData, "table")
 
   for i = 1, #tScanData do
@@ -167,8 +171,8 @@ local function ensure(func, ...)
 end
 
 local function BlockEQ(tBlock, sName, sDamage)
-  expect(1, tBlock,  "table")
-  expect(2, sName,   "string")
+  expect(1, tBlock, "table")
+  expect(2, sName, "string")
   expect(3, sDamage, "number")
 
   return tBlock.name == sName and tBlock.metadata == sDamage
@@ -184,15 +188,15 @@ local function main()
     x = 0,
     y = 0,
     z = 0,
-    facing=GetDirection(scan())
+    facing = GetDirection(scan())
   }
   local tOffsets = {
-    north = {x = 0,  y = 0, z = -1, right = "east",  left = "west"},
-    east  = {x = 1,  y = 0, z = 0,  right = "south", left = "north"},
-    south = {x = 0,  y = 0, z = 1,  right = "west",  left = "east"},
-    west  = {x = -1, y = 0, z = 0,  right = "north", left = "south"}
+    north = { x = 0, y = 0, z = -1, right = "east", left = "west" },
+    east  = { x = 1, y = 0, z = 0, right = "south", left = "north" },
+    south = { x = 0, y = 0, z = 1, right = "west", left = "east" },
+    west  = { x = -1, y = 0, z = 0, right = "north", left = "south" }
   }
-  local tSteps = {n = 0}
+  local tSteps = { n = 0 }
   function tSteps.Push(x, y, z)
     expect(1, x, "number")
     expect(2, y, "number")
@@ -200,13 +204,14 @@ local function main()
 
     tSteps.n = tSteps.n + 1
     print("Retracer", "Push", tSteps.n, string.format("x:%d y:%d z:%d", x, y, z))
-    tSteps[tSteps.n] = {x = x, y = y, z = z}
+    tSteps[tSteps.n] = { x = x, y = y, z = z }
     while tSteps.n > 10 do
       print("Retracer", "Remove 1")
       table.remove(tSteps, 1)
       tSteps.n = tSteps.n - 1
     end
   end
+
   function tSteps.Pop()
     if tSteps.n == 0 then return end
     print("Retracer", "Pop", tSteps.n)
@@ -236,6 +241,7 @@ local function main()
   local function GetOffset(sDir)
     return tOffsets[sDir].x, tOffsets[sDir].y, tOffsets[sDir].z
   end
+
   -- adds a movement offset to the turtle's position
   local function AddOffset(sDir)
     expect(1, sDir, "string")
@@ -245,6 +251,7 @@ local function main()
     pos.y = pos.y + tOffsets[sDir].y
     pos.z = pos.z + tOffsets[sDir].z
   end
+
   -- move down, checks if bedrock is below.
   -- returns true if bedrock is below
   local function Down(tScanData)
@@ -257,6 +264,7 @@ local function main()
     pos.y = pos.y - 1
     CheckFuel()
   end
+
   -- move up
   local function Up(tScanData)
     tScanData = tScanData or scan()
@@ -269,6 +277,7 @@ local function main()
     pos.y = pos.y + 1
     CheckFuel()
   end
+
   -- go forward, checks if bedrock is in front
   -- returns true if bedrock is in front
   local function Forward(tScanData)
@@ -282,16 +291,19 @@ local function main()
     AddOffset(pos.facing)
     CheckFuel()
   end
+
   local function Right()
     turtle.turnRight()
     pos.facing = tOffsets[pos.facing].right
     updatePos(pos.x, pos.y, pos.z, pos.facing)
   end
+
   local function Left()
     turtle.turnLeft()
     pos.facing = tOffsets[pos.facing].left
     updatePos(pos.x, pos.y, pos.z, pos.facing)
   end
+
   -- determine the fastest direction for turning
   local function GetFastestTurn(sDir)
     expect(1, sDir, "string")
@@ -303,6 +315,7 @@ local function main()
       return Right
     end
   end
+
   -- face a direction using the GetFastestTurn function
   local function Face(sDir)
     expect(1, sDir, "string")
@@ -315,16 +328,18 @@ local function main()
       Turn()
     end
   end
+
   -- go to position x,y,z, with direction sDir (if provided) by simply moving along each axis (no pathfinding).
   -- without bYLast: YXZ
   -- with    bYLast: XZY
-  local lastGoTo = {x=0, y=0, z=0}
+  local lastGoTo = { x = 0, y = 0, z = 0 }
   local duplicateCount = 0
   local function compare(x, y, z)
     if lastGoTo.x == x and lastGoTo.y == y and lastGoTo.z == z then
       return true
     end
   end
+
   local function GoTo(x, y, z, sDir, bYLast, bNoRecord)
     expect(1, x, "number")
     expect(2, y, "number")
@@ -357,6 +372,7 @@ local function main()
         if Forward() then return true end
       end
     end
+
     local function Y()
       -- equalize Y axis
       while pos.y < y do
@@ -366,6 +382,7 @@ local function main()
         if Down() then return true end
       end
     end
+
     local function Z()
       -- equalize Z axis
       while pos.z < z do
@@ -389,6 +406,7 @@ local function main()
     end
     if sDir then Face(sDir) end
   end
+
   local function ComputeAbsoluteFromRelative(x, y, z)
     expect(1, x, "number")
     expect(2, y, "number")
@@ -396,6 +414,7 @@ local function main()
 
     return pos.x + x, pos.y + y, pos.z + z
   end
+
   -- check if the inventory is full.
   local function CheckInventory()
     local slotsFilled = 0
@@ -409,21 +428,34 @@ local function main()
     end
     return false
   end
+
   local function DropItems()
     for i = 1, 16 do
       turtle.select(i)
       turtle.drop(64)
     end
   end
+
   local function GetOres(tOreDict, CurrentScan)
     expect(1, tOreDict, "table")
     expect(2, CurrentScan, "table")
 
-    local tOres = {n = 0}
+    local tOres = { n = 0 }
     for i = 1, #CurrentScan do
-      for name, tDamage in pairs(tOreDict) do
-        for j = 1, #tDamage do
-          if CurrentScan[i] and CurrentScan[i].name == name and CurrentScan[i].metadata == tDamage[j] then
+      if CurrentScan[i].metadata then
+        -- 1.12.2
+        for name, tDamage in pairs(tOreDict) do
+          for j = 1, #tDamage do
+            if CurrentScan[i] and CurrentScan[i].name == name and CurrentScan[i].metadata == tDamage[j] then
+              tOres.n = tOres.n + 1
+              tOres[tOres.n] = CurrentScan[i]
+            end
+          end
+        end
+      else
+        -- 1.19
+        for name in pairs(tOreDict) do
+          if CurrentScan[i] and CurrentScan[i].name == name then
             tOres.n = tOres.n + 1
             tOres[tOres.n] = CurrentScan[i]
           end
@@ -432,6 +464,7 @@ local function main()
     end
     return tOres
   end
+
   -- get the closest ore in range, obeying max offset.
   local function GetClosestInRange(tOres)
     expect(1, tOres, "table")
@@ -475,6 +508,7 @@ local function main()
         return true
       end
     end
+
     -- check all sides
     if check() then bCanDrop = true return end
     for i = 1, 3 do
@@ -482,9 +516,10 @@ local function main()
       if check() then bCanDrop = true return end
     end
   end
+
   _check()
   local function CopyPos()
-    return {x = pos.x, y = pos.y, z = pos.z, facing = pos.facing}
+    return { x = pos.x, y = pos.y, z = pos.z, facing = pos.facing }
   end
 
   local function retrace()
@@ -547,51 +582,59 @@ local function main()
 
   local tIgnoreList = {}
   local tOreDict = {
-    ["actuallyadditions:block_misc"] = {3},
-    ["minecraft:iron_ore"] = {0},
-    ["minecraft:gold_ore"] = {0},
-    ["minecraft:diamond_ore"] = {0},
-    ["minecraft:coal_ore"] = {0},
-    ["minecraft:lapis_ore"] = {0},
-    ["minecraft:emerald_ore"] = {0},
-    ["minecraft:quartz_ore"] = {0},
-    ["minecraft:redstone_ore"] = {0},
-    ["thermalfoundation:ore"] = {0,1,2,3,4,5,6,7,8},
-    ["thermalfoundation:ore_fluid"] = {0,1,2,3,4,5},
-    ["railcraft:ore_metal"] = {0,1,2,3,4,5},
-    ["railcraft:ore_metal_poor"] = {0,1,2,3,4,5,6,7},
-    ["bno:ore_netherdiamond"] = {0},
-    ["bno:ore_netheremerald"] = {0},
-    ["bno:ore_netherredstone"] = {0},
-    ["bno:ore_netheriron"] = {0},
-    ["bno:ore_nethergold"] = {0},
-    ["bno:ore_nethercoal"] = {0},
-    ["bno:ore_nethertin"] = {0},
-    ["bno:ore_nethercopper"] = {0},
-    ["bno:ore_netherlapis"] = {0},
-    ["dungeontactics:nethergold_ore"] = {0},
-    ["ic2:blockmetal"] = {0,1,2,3},
-    ["ic2:resource"] = {1,2,3,4},
-    ["appliedenergistics2:quartz_ore"] = {0},
-    ["appliedenergistics2:charged_quartz_ore"] = {0},
-    ["dungeontactics:silver_ore"] = {0},
-    ["dungeontactics:mithril_ore"] = {0},
-    ["dungeontactics:stonequartz_ore"] = {0},
-    ["dungeontactics:enddiamond_ore"] = {0},
-    ["dungeontactics:endlapis_ore"] = {0},
-    ["galacticraftcore:basic_block_core"] = {5,6,7,8},
-    ["galacticraftcore:basic_block_moon"] = {0,1,2,6},
-    ["galacticraftplanets:mars"] = {0,1,2,3},
-    ["galacticraftplanets:asteroids_block"] = {3,5},
-    ["galacticraftplanets:venus"] = {6,7,8,9,10,11,13},
-    ["rftools:dimensional_shard_ore"] = {0,1,2},
-    ["quark:biotite_ore"] = {0},
-    ["railcraft:ore"] = {0,1,2,3,4},
-    ["railcraft:ore_magic"] = {0},
-    ["tconstruct:ore"] = {0,1},
-    ["forestry:resources"] = {0,1,2},
-    ["dimensionalpocketsii:block_dimensional_ore"] = {0},
-    ["mekanism:oreblock"] = {0,1,2},
+    ["actuallyadditions:block_misc"] = { 3 },
+    ["minecraft:iron_ore"] = { 0 },
+    ["minecraft:deepslate_iron_ore"] = {},
+    ["minecraft:gold_ore"] = { 0 },
+    ["minecraft:deepslate_gold_ore"] = {},
+    ["minecraft:diamond_ore"] = { 0 },
+    ["minecraft:deepslate_diamond_ore"] = {},
+    ["minecraft:coal_ore"] = { 0 },
+    ["minecraft:deepslate_coal_ore"] = {},
+    ["minecraft:lapis_ore"] = { 0 },
+    ["minecraft:deepslate_lapis_ore"] = {},
+    ["minecraft:emerald_ore"] = { 0 },
+    ["minecraft:deepslate_emerald_ore"] = {},
+    ["minecraft:quartz_ore"] = { 0 },
+    ["minecraft:redstone_ore"] = { 0 },
+    ["minecraft:deepslate_redstone_ore"] = {},
+    ["minecraft:nether_gold_ore"] = {},
+    ["thermalfoundation:ore"] = { 0, 1, 2, 3, 4, 5, 6, 7, 8 },
+    ["thermalfoundation:ore_fluid"] = { 0, 1, 2, 3, 4, 5 },
+    ["railcraft:ore_metal"] = { 0, 1, 2, 3, 4, 5 },
+    ["railcraft:ore_metal_poor"] = { 0, 1, 2, 3, 4, 5, 6, 7 },
+    ["bno:ore_netherdiamond"] = { 0 },
+    ["bno:ore_netheremerald"] = { 0 },
+    ["bno:ore_netherredstone"] = { 0 },
+    ["bno:ore_netheriron"] = { 0 },
+    ["bno:ore_nethergold"] = { 0 },
+    ["bno:ore_nethercoal"] = { 0 },
+    ["bno:ore_nethertin"] = { 0 },
+    ["bno:ore_nethercopper"] = { 0 },
+    ["bno:ore_netherlapis"] = { 0 },
+    ["dungeontactics:nethergold_ore"] = { 0 },
+    ["ic2:blockmetal"] = { 0, 1, 2, 3 },
+    ["ic2:resource"] = { 1, 2, 3, 4 },
+    ["appliedenergistics2:quartz_ore"] = { 0 },
+    ["appliedenergistics2:charged_quartz_ore"] = { 0 },
+    ["dungeontactics:silver_ore"] = { 0 },
+    ["dungeontactics:mithril_ore"] = { 0 },
+    ["dungeontactics:stonequartz_ore"] = { 0 },
+    ["dungeontactics:enddiamond_ore"] = { 0 },
+    ["dungeontactics:endlapis_ore"] = { 0 },
+    ["galacticraftcore:basic_block_core"] = { 5, 6, 7, 8 },
+    ["galacticraftcore:basic_block_moon"] = { 0, 1, 2, 6 },
+    ["galacticraftplanets:mars"] = { 0, 1, 2, 3 },
+    ["galacticraftplanets:asteroids_block"] = { 3, 5 },
+    ["galacticraftplanets:venus"] = { 6, 7, 8, 9, 10, 11, 13 },
+    ["rftools:dimensional_shard_ore"] = { 0, 1, 2 },
+    ["quark:biotite_ore"] = { 0 },
+    ["railcraft:ore"] = { 0, 1, 2, 3, 4 },
+    ["railcraft:ore_magic"] = { 0 },
+    ["tconstruct:ore"] = { 0, 1 },
+    ["forestry:resources"] = { 0, 1, 2 },
+    ["dimensionalpocketsii:block_dimensional_ore"] = { 0 },
+    ["mekanism:oreblock"] = { 0, 1, 2 },
   }
   local lastY = 0
 
