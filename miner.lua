@@ -174,8 +174,12 @@ local function BlockEQ(tBlock, sName, sDamage)
   expect(1, tBlock, "table")
   expect(2, sName, "string")
   expect(3, sDamage, "number")
+  
+  if tBlock.metadata then
+    return tBlock.name == sName and tBlock.metadata == sDamage
+  end
 
-  return tBlock.name == sName and tBlock.metadata == sDamage
+  return tBlock.name == sName
 end
 
 local function main()
