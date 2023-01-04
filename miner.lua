@@ -603,6 +603,7 @@ local function main()
     ["minecraft:redstone_ore"] = { 0 },
     ["minecraft:deepslate_redstone_ore"] = {},
     ["minecraft:nether_gold_ore"] = {},
+    ["minecraft:ancient_debris"] = {},
     ["thermalfoundation:ore"] = { 0, 1, 2, 3, 4, 5, 6, 7, 8 },
     ["thermalfoundation:ore_fluid"] = { 0, 1, 2, 3, 4, 5 },
     ["railcraft:ore_metal"] = { 0, 1, 2, 3, 4, 5 },
