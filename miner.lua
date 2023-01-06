@@ -610,9 +610,8 @@ local function main()
       if GoHome() then print("Main", "Out of space.") break end
     end
 
-    -- go down
-    -- if bedrock below, we need to stop and return.
-    if Down() then
+    -- go forward
+    if Forward() then
       break
     end
     lastY = lastY - 1
