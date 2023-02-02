@@ -236,13 +236,14 @@ local function get_side_of_ore(scan_data, x, y, z)
   ---@param _x integer
   ---@param _y integer
   ---@param _z integer
+  ---@param offset integer?
   ---@return integer x
   ---@return integer y
   ---@return integer z
   ---@return integer distance
-  local function add(i, _x, _y, _z)
+  local function add(i, _x, _y, _z, offset)
     return _x + SIDES[i][1], _y + SIDES[i][2], _z + SIDES[i][3],
-        (_x + SIDES[i][1] + _y + SIDES[i][2] + _z + SIDES[i][3])
+        (_x + SIDES[i][1] + _y + SIDES[i][2] + _z + SIDES[i][3] + (offset or 0))
   end
 
   --- Get the block info for the given position.
@@ -260,7 +261,7 @@ local function get_side_of_ore(scan_data, x, y, z)
       end
     end
 
-    return { name = "unknown", x = _x, y = _y, z = _z, state = {} }
+    return { name = "unknown", x = _x, y = _y, z = _z, state = {}, offset = 1000 }
   end
 
   -- Loop:
@@ -274,7 +275,7 @@ local function get_side_of_ore(scan_data, x, y, z)
     table.remove(blocks_testing, 1)
 
     for i = 1, 4 do
-      local px, py, pz, distance = add(i, block.x, block.y, block.z)
+      local px, py, pz, distance = add(i, block.x, block.y, block.z, block.offset)
       if not checked[px .. py .. pz] then
         table.insert(blocks_testing, { px, py, pz, distance })
         checked[px .. py .. pz] = true
