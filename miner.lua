@@ -224,7 +224,7 @@ local function get_side_of_ore(scan_data, x, y, z)
     { 0, 0, 1 },
     { 0, 0, -1 }
   }
-  local MAX_ITERATIONS = 10
+  local MAX_ITERATIONS = 100
 
   local blocks_testing = { { x, y, z } }
 
@@ -236,16 +236,21 @@ local function get_side_of_ore(scan_data, x, y, z)
   ---@param _x integer
   ---@param _y integer
   ---@param _z integer
-  ---@return integer
-  ---@return integer
-  ---@return integer
+  ---@return integer x
+  ---@return integer y
+  ---@return integer z
+  ---@return integer distance
   local function add(i, _x, _y, _z)
-    return _x + SIDES[i][1], _y + SIDES[i][2], _z + SIDES[i][3]
+    return _x + SIDES[i][1], _y + SIDES[i][2], _z + SIDES[i][3],
+        (_x + SIDES[i][1] + _y + SIDES[i][2] + _z + SIDES[i][3])
   end
 
   --- Get the block info for the given position.
   ---@return block_info
   local function get_block()
+    table.sort(blocks_testing, function(a, b)
+      return a[4] < b[4] -- sort by closest distance.
+    end)
     local _x, _y, _z = table.unpack(blocks_testing[1], 1, 3)
 
     for i = 1, #scan_data do
@@ -269,9 +274,9 @@ local function get_side_of_ore(scan_data, x, y, z)
     table.remove(blocks_testing, 1)
 
     for i = 1, 4 do
-      local px, py, pz = add(i, block.x, block.y, block.z)
+      local px, py, pz, distance = add(i, block.x, block.y, block.z)
       if not checked[px .. py .. pz] then
-        table.insert(blocks_testing, {})
+        table.insert(blocks_testing, { px, py, pz, distance })
         checked[px .. py .. pz] = true
       end
     end
