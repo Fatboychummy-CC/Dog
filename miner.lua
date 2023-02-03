@@ -27,20 +27,29 @@ local expect = require "cc.expect".expect
 ---@field y integer The y position relative to the turtle.
 ---@field z integer The z position relative to the turtle.
 
-local MODULE_LOOKUP = {
+local EQUIPABLE_MODULE_LOOKUP = {
   ["minecraft:diamond_pickaxe"] = "pickaxe",
   ["minecraft:netherite_pickaxe"] = "pickaxe",
   ["plethora:module_scanner"] = "scanner",
   ["plethora:module_kinetic"] = "kinetic"
 }
-local MODULE_I_LOOKUP = {
+local EQUIPABLE_MODULE_I_LOOKUP = {
   ["scanner"] = "plethora:module_scanner",
   ["kinetic"] = "plethora:module_kinetic"
 }
 
-local PICKAXES = {
+local EQUIPABLE_PICKAXES = {
   "minecraft:diamond_pickaxe",
   "minecraft:netherite_pickaxe"
+}
+
+local PICKAXES = {
+  "minecraft:diamond_pickaxe",
+  "minecraft:netherite_pickaxe",
+  "minecraft:golden_pickaxe",
+  "minecraft:iron_pickaxe",
+  "minecraft:stone_pickaxe",
+  "minecraft:wooden_pickaxe"
 }
 
 local ORE_DICT = {
@@ -97,9 +106,22 @@ local function select_item(name)
   return false
 end
 
---- Attempt to select a pickaxe.
----@return boolean success If the turtle found a pickaxe to select.
-local function select_pickaxe()
+--- Attempt to select an equipable pickaxe.
+---@return boolean success If the turtle found a suitable pickaxe to select.
+local function select_equipable_pickaxe()
+  local success = false
+
+  for i = 1, #EQUIPABLE_PICKAXES do
+    success = select_item(EQUIPABLE_PICKAXES[i])
+    if success then break end
+  end
+
+  return success
+end
+
+--- Attempt to select any pickaxe.
+---@return boolean success If the turtle found any pickaxe to select.
+local function select_any_pickaxe()
   local success = false
 
   for i = 1, #PICKAXES do
@@ -137,13 +159,13 @@ local function swap_module(module, side)
     end
   else
     if module == "pickaxe" then
-      local success_1 = select_pickaxe()
+      local success_1 = select_equipable_pickaxe()
 
       if not success_1 then
         return false, "Could not find module of type 'pickaxe'"
       end
     else
-      local success_1 = select_item(MODULE_I_LOOKUP[module])
+      local success_1 = select_item(EQUIPABLE_MODULE_I_LOOKUP[module])
       if not success_1 then
         return false, ("Could not find module of type '%s'"):format(module)
       end
@@ -167,7 +189,7 @@ local function get_module_info(side)
   local info = turtle.getItemDetail()
 
   if info then
-    local module = MODULE_LOOKUP[info.name] or "unknown"
+    local module = EQUIPABLE_MODULE_LOOKUP[info.name] or "unknown"
     -- re-equip the item.
     if side == "left" then
       turtle.equipLeft()
@@ -192,7 +214,7 @@ local function dig_forward(use_internal_pick)
 
   if use_internal_pick then
     local ok, err = swap_module("kinetic", swapped_side)
-    ok = select_pickaxe()
+    ok = select_any_pickaxe()
 
     -- Kinetic augment digging may require multiple swings.
     -- This will immediately fail on bedrock.
