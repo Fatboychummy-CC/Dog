@@ -3,6 +3,8 @@
 ---@type fun(index:integer, value:any, ...:string)
 local expect = require "cc.expect".expect
 
+local QIT = require "QIT"
+
 ---@alias side
 ---| "left"
 ---| "right"
@@ -26,6 +28,19 @@ local expect = require "cc.expect".expect
 ---@field x integer The x position relative to the turtle.
 ---@field y integer The y position relative to the turtle.
 ---@field z integer The z position relative to the turtle.
+
+---@class vector : {x:integer, y:integer, z:integer}
+---@operator add(vector):vector
+---@operator sub(vector):vector
+---@operator mul(number):vector
+---@operator div(number):vector
+---@operator unm:vector
+---@field dot fun(self:vector, o:vector):vector
+---@field cross fun(self:vector, o:vector):vector
+---@field length fun(self:vector):number
+---@field normalize fun(self:vector):vector
+---@field round fun(self:vector):vector
+---@field new fun(x:number, y:number, z:number):vector
 
 local EQUIPABLE_MODULE_LOOKUP = {
   ["minecraft:diamond_pickaxe"] = "pickaxe",
@@ -75,8 +90,46 @@ local ORE_DICT = {
 ---@type {left:turtle_module?, right:turtle_module?}
 local currently_equipped = {}
 
----@type array<block_info>
-local ore_cache = {}
+---@type QIT<vector>
+local ore_cache = QIT()
+
+---@type vector
+local turtle_position = vector.new()
+
+--- Add an ore to the ore cache, tests if the ore is in the cache already before doing so to prevent duplicates.
+---@param block block_info
+local function add_to_ore_cache(block)
+  local found = false
+  local block_pos = vector.new(block.x, block.y, block.z) + turtle_position
+
+  for i = 1, ore_cache.n do
+    local test = ore_cache[i]
+
+    if test.x == block_pos.x and test.y == block_pos.y and test.z == block_pos.z then
+      found = true
+      break
+    end
+  end
+
+  if not found then
+    ore_cache:Insert(block_pos)
+  end
+end
+
+--- Remove an ore from the cache.
+---@param block block_info
+local function remove_from_ore_cache(block)
+  local block_pos = vector.new(block.x, block.y, block.z) + turtle_position
+
+  for i = 1, ore_cache.n do
+    local test = ore_cache[i]
+
+    if test.x == block_pos.x and test.y == block_pos.y and test.z == block_pos.z then
+      ore_cache:Take(i)
+      break
+    end
+  end
+end
 
 --- Shorthand to turtle.select(1)
 local function sel1()
@@ -292,7 +345,7 @@ local function get_side_of_ore(x, y, z)
   end
 
   --- Get the block info for the given position.
-  ---@return block_info
+  ---@return vector position The position of the edge.
   local function get_block()
     table.sort(blocks_testing, function(a, b)
       return a[4] < b[4] -- sort by closest distance.
@@ -336,4 +389,26 @@ local function get_side_of_ore(x, y, z)
   end
 
   return blocks_testing[1].x, blocks_testing[1].y, blocks_testing[1].z
+end
+
+--- Scan for ores, adds ores to a memory list, and returns the scan data.
+---@return array<block_info> scan_data The scan data.
+local function scan()
+  local already_equipped, side = best_attachment("scanner")
+  if not already_equipped then
+    swap_module("scanner", side)
+  end
+
+  ---@type array<block_info>
+  local scan_data = peripheral.call(side, "scan")
+
+  for i = 1, #scan_data do
+    local block = scan_data[i]
+
+    if ORE_DICT[block.name] then
+      add_to_ore_cache(block)
+    end
+  end
+
+  return scan_data
 end
