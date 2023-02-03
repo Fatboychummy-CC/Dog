@@ -205,6 +205,32 @@ local function get_module_info(side)
   return "empty"
 end
 
+--- Determine the best attachment for a specified module. Avoids putting multiple pickaxes in the inventory.
+---@param module turtle_module
+---@return boolean already_equipped If the module is already equipped.
+---@return side side If already equipped, the side it's on, otherwise the best attachment point.
+local function best_attachment(module)
+  if currently_equipped.left == module then
+    -- Module is already on left side.
+    return true, "left"
+  elseif currently_equipped.right == module then
+    -- Module is already on the right side.
+    return true, "right"
+  end
+
+  if currently_equipped.left == "pickaxe" and currently_equipped.right == "pickaxe" then
+    error("Why did you equip two pickaxes? I don't know which one to use!", 0)
+  end
+
+  -- Pickaxe is equipped on the left side, best attachment is the right side.
+  if currently_equipped.left == "pickaxe" then
+    return false, "right"
+  end
+
+  -- Pickaxe is either equipped on the right side, or nothing is equipped on the left side. Best is left.
+  return false, "left"
+end
+
 --- Dig forward, optionally using the internal pickaxe if desired. This requires a kinetic augment and pickaxe.
 ---@param use_internal_pick boolean? Use the internal pickaxe (with kinetic augment).
 local function dig_forward(use_internal_pick)
