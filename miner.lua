@@ -75,7 +75,7 @@ local ORE_DICT = {
 ---@type {left:turtle_module?, right:turtle_module?}
 local currently_equipped = {}
 
----@type three_dimensional_array<string>
+---@type array<block_info>
 local ore_cache = {}
 
 --- Shorthand to turtle.select(1)
@@ -227,18 +227,16 @@ local function dig_forward(use_internal_pick)
 end
 
 --- Get the closest position of the "side" of the given ore block.
----@param scan_data array<block_info>
 ---@param x integer Position of the ore to test.
 ---@param y integer Position of the ore to test.
 ---@param z integer Position of the ore to test.
 ---@return integer x Position of the side of the ore.
 ---@return integer y Position of the side of the ore.
 ---@return integer z Position of the side of the ore.
-local function get_side_of_ore(scan_data, x, y, z)
-  expect(1, scan_data, "table")
-  expect(2, x, "number")
-  expect(3, y, "number")
-  expect(4, z, "number")
+local function get_side_of_ore(x, y, z)
+  expect(1, x, "number")
+  expect(2, y, "number")
+  expect(3, z, "number")
 
   local SIDES = {
     { -1, 0, 0 },
@@ -258,14 +256,13 @@ local function get_side_of_ore(scan_data, x, y, z)
   ---@param _x integer
   ---@param _y integer
   ---@param _z integer
-  ---@param offset integer?
   ---@return integer x
   ---@return integer y
   ---@return integer z
   ---@return integer distance
-  local function add(i, _x, _y, _z, offset)
+  local function add(i, _x, _y, _z)
     return _x + SIDES[i][1], _y + SIDES[i][2], _z + SIDES[i][3],
-        (_x + SIDES[i][1] + _y + SIDES[i][2] + _z + SIDES[i][3] + (offset or 0))
+        (_x + SIDES[i][1] + _y + SIDES[i][2] + _z + SIDES[i][3])
   end
 
   --- Get the block info for the given position.
@@ -276,14 +273,14 @@ local function get_side_of_ore(scan_data, x, y, z)
     end)
     local _x, _y, _z = table.unpack(blocks_testing[1], 1, 3)
 
-    for i = 1, #scan_data do
-      local block_data = scan_data[i]
+    for i = 1, #ore_cache do
+      local block_data = ore_cache[i]
       if block_data.x == _x and block_data.y == _y and block_data.z == _z then
         return block_data
       end
     end
 
-    return { name = "unknown", x = _x, y = _y, z = _z, state = {}, offset = 1000 }
+    return { name = "unknown", x = _x, y = _y, z = _z, state = {} }
   end
 
   -- Loop:
@@ -297,7 +294,7 @@ local function get_side_of_ore(scan_data, x, y, z)
     table.remove(blocks_testing, 1)
 
     for i = 1, 4 do
-      local px, py, pz, distance = add(i, block.x, block.y, block.z, block.offset)
+      local px, py, pz, distance = add(i, block.x, block.y, block.z)
       if not checked[px .. py .. pz] then
         table.insert(blocks_testing, { px, py, pz, distance })
         checked[px .. py .. pz] = true
