@@ -3,7 +3,9 @@
 ---@type fun(index:integer, value:any, ...:string)
 local expect = require "cc.expect".expect
 
+package.path = package.path .. ";lib/fatboychummy/?.lua;lib/fatboychummy/?/init.lua"
 local QIT = require "QIT"
+local turtle_track = require "turtle_track"
 
 ---@alias side
 ---| "left"
@@ -87,20 +89,20 @@ local ORE_DICT = {
   ["minecraft:ancient_debris"] = true,
 }
 
+local DIR = fs.getDir(shell.getRunningProgram())
+local ORE_CACHE = fs.combine(DIR, "ores.dat")
+
 ---@type {left:turtle_module?, right:turtle_module?}
 local currently_equipped = {}
 
 ---@type QIT<vector>
 local ore_cache = QIT()
 
----@type vector
-local turtle_position = vector.new()
-
 --- Add an ore to the ore cache, tests if the ore is in the cache already before doing so to prevent duplicates.
 ---@param block block_info
 local function add_to_ore_cache(block)
   local found = false
-  local block_pos = vector.new(block.x, block.y, block.z) + turtle_position
+  local block_pos = vector.new(block.x, block.y, block.z) + turtle_track.position
 
   for i = 1, ore_cache.n do
     local test = ore_cache[i]
@@ -119,7 +121,7 @@ end
 --- Remove an ore from the cache.
 ---@param block block_info
 local function remove_from_ore_cache(block)
-  local block_pos = vector.new(block.x, block.y, block.z) + turtle_position
+  local block_pos = vector.new(block.x, block.y, block.z) + turtle_track.position
 
   for i = 1, ore_cache.n do
     local test = ore_cache[i]
