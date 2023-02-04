@@ -52,6 +52,7 @@ function tracker.go_forward()
 
   if success then
     tracker.position = tracker.position + facings[tracker.facing]
+    tracker.fuel = tracker.fuel - 1
   end
 
   write_movement("done")
@@ -66,6 +67,7 @@ function tracker.go_back()
 
   if success then
     tracker.position = tracker.position + facings[(tracker.facing + 2) % 4]
+    tracker.fuel = tracker.fuel - 1
   end
 
   write_movement("done")
@@ -80,6 +82,7 @@ function tracker.go_up()
 
   if success then
     tracker.position = tracker.position + vector.new(0, 1, 0)
+    tracker.fuel = tracker.fuel - 1
   end
 
   write_movement("done")
@@ -94,6 +97,7 @@ function tracker.go_down()
 
   if success then
     tracker.position = tracker.position + vector.new(0, -1, 0)
+    tracker.fuel = tracker.fuel - 1
   end
 
   write_movement("done")
