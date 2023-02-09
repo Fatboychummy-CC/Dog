@@ -7,7 +7,8 @@ Dog fetches ore, and like a good boy he brings it back.
 
 # Usage
 1. Run `wget https://raw.githubusercontent.com/Fatboychummy-CC/Dog/master/miner.lua`
-2. Run `miner.lua`
+2. Run `wget https://raw.githubusercontent.com/Fatboychummy-CC/Dog/master/QIT.lua`
+3. Run `miner.lua`
 
 # Command-line arguments
 1. `Max Offset: number`
