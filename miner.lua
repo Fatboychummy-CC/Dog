@@ -187,7 +187,17 @@ local function main()
   -- if the arguments were bad, stop
   if not CheckArgs() then return end
 
-  local scan = CheckPresence("plethora:scanner", "scan")
+  local ok, scan = pcall(CheckPresence, "plethora:scanner", "scan")
+  if not ok then
+    local ok2, scan2 = pcall(CheckPresence, "geoScanner", "scan")
+    if not ok2 then
+      error("No block scanner or geoscanner detected.", 0)
+    end
+    scan = function()
+      return scan2(8)
+    end
+  end
+  
   local pos = {
     x = 0,
     y = 0,
