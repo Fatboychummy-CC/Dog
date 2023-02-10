@@ -70,7 +70,6 @@ local PICKAXES = {
     "minecraft:wooden_pickaxe"
 }
 
-
 ---@type {[turtle_facing]:vector}
 local facings = {
     [0] = vector.new(0, 0, -1), -- negative Z direction, north
@@ -121,6 +120,7 @@ local function check_movement(movement)
   end
 end
 
+--- Load information from the position cache.
 function aid.load()
   local data = file_helper.unserialize(POSITION_CACHE)
 
@@ -136,11 +136,6 @@ function aid.load()
   end
 
   ---@TODO If no data, we'll need a new way to determine our direction.
-end
-
---- Shorthand to turtle.select(1)
-local function sel1()
-  turtle.select(1)
 end
 
 --- Select an item in the turtle's inventory.
