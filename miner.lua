@@ -170,9 +170,9 @@ end
 --- Scan for ores, adds ores to a memory list, and returns the scan data.
 ---@return array<block_info> scan_data The scan data.
 local function scan()
-  local already_equipped, side = turtle_aid.best_attachment("scanner")
-  if not already_equipped then
-    turtle_aid.swap_module("scanner", side)
+  local ok, side = turtle_aid.quick_equip("scanner")
+  if not ok then
+    error(side, 0)
   end
 
   ---@type array<block_info>
@@ -187,4 +187,59 @@ local function scan()
   end
 
   return scan_data
+end
+
+--- Dig to a specified position.
+---@param x integer The X position.
+---@param y integer The Y position.
+---@param z integer The Z position.
+local function dig_to(x, y, z)
+  -- Align X axis
+  while turtle_aid.position.x ~= x do
+    if turtle_aid.position.x > x then
+      -- X > wanted, face -X
+      turtle_aid.face(3)
+      turtle_aid.gravel_protected_dig()
+      turtle_aid.go_forward()
+    else
+      -- face +X
+      turtle_aid.face(1)
+      turtle_aid.gravel_protected_dig()
+      turtle_aid.go_forward()
+    end
+  end
+
+  -- Align Z axis
+  while turtle_aid.position.z ~= z do
+    if turtle_aid.position.z > z then
+      -- Z > wanted, face -Z
+      turtle_aid.face(0)
+      turtle_aid.gravel_protected_dig()
+      turtle_aid.go_forward()
+    else
+      -- face +Z
+      turtle_aid.face(2)
+      turtle_aid.gravel_protected_dig()
+      turtle_aid.go_forward()
+    end
+  end
+
+  -- Align Y axis
+  while turtle_aid.position.y ~= y do
+    if turtle_aid.position.y > y then
+      turtle.digDown()
+      turtle_aid.go_down()
+    else
+      turtle_aid.go_up()
+      turtle_aid.gravel_protected_dig_up()
+    end
+  end
+end
+
+--- Mine to the edge of an ore given the specified position.
+---@param x integer The X position of the ore.
+---@param y integer The Y position of the ore.
+---@param z integer The Z position of the ore.
+local function mine_to_ore(x, y, z)
+  dig_to(get_side_of_ore(x, y, z))
 end
