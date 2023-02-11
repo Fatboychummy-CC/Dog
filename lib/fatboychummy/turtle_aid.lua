@@ -192,7 +192,7 @@ end
 ---@param side side The side to swap modules.
 ---@return boolean success If the turtle could swap the module.
 ---@return string? reason If the turtle failed to swap the module, the reason will be stored here.
-local function swap_module(module, side)
+function aid.swap_module(module, side)
   expect(1, module, "string")
   expect(2, side, "string")
 
@@ -238,7 +238,7 @@ end
 function aid.get_module_info(side)
   expect(1, side, "string")
 
-  swap_module("empty", side)
+  aid.swap_module("empty", side)
 
   local info = turtle.getItemDetail()
 
@@ -291,7 +291,7 @@ function aid.dig_forward()
   ---@type side
   local swapped_side = aid.currently_equipped.left == "pickaxe" and "right" or "left"
 
-  local ok, err = swap_module("kinetic", swapped_side)
+  local ok, err = aid.swap_module("kinetic", swapped_side)
   ok = select_any_pickaxe()
   ---@TODO error check here
 
