@@ -285,6 +285,24 @@ function aid.best_attachment(module)
   return false, "left"
 end
 
+--- Get the best attachment point and equip a module on that attachement point.
+---@param module turtle_module The module to equip.
+---@return boolean success
+---@return string|side error_or_side The reason for failure, or the side the module is equipped on on success.
+function aid.quick_equip(module)
+  expect(1, module, "string")
+
+  local already_equipped, side = aid.best_attachment(module)
+  if not already_equipped then
+    local ok, reason = aid.swap_module(module, side)
+
+    ---@diagnostic disable-next-line if not `already_equipped`, side guaranteed exists.
+    return ok, ok and side or reason
+  end
+
+  return true, side
+end
+
 --- Dig forward, using internal pickaxe. This requires a kinetic augment and pickaxe.
 function aid.dig_forward()
   -- we want to ensure we don't accidentally have two pickaxes in our inventory for this.
@@ -388,6 +406,37 @@ function aid.turn_right()
 
   write_movement("done")
   return success
+end
+
+--- Turn to face the specified direction.
+---@param new_facing turtle_facing The direction to face.
+function aid.face(new_facing)
+  expect(1, new_facing, "number")
+  if new_facing ~= 1 or new_facing ~= 2 or new_facing ~= 3 or new_facing ~= 0 then
+    error(("Bad argument #1: expected integers 0, 1, 2, or 3; got %s."):format(new_facing), 2)
+  end
+
+  if aid.facing == new_facing then
+    return
+  elseif (aid.facing + 1) % 4 == new_facing then
+    aid.turn_right()
+  else
+    repeat
+      aid.turn_left()
+    until aid.facing == new_facing
+  end
+end
+
+function aid.gravel_protected_dig()
+  repeat
+    turtle.dig()
+  until not turtle.detect()
+end
+
+function aid.gravel_protected_dig_up()
+  repeat
+    turtle.digUp()
+  until not turtle.detectUp()
 end
 
 return aid
