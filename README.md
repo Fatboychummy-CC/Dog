@@ -5,7 +5,7 @@ Dog fetches ore, and like a good boy he brings it back.
 # Requirements
 
 1. Block Scanner in or equipped on the turtle.
-2. Undamaged, unrepaired diamond or netherite pickaxe in or equipped on the turtle.
+2. Undamaged, unrepaired, unmodified (any NBT data will make the pickaxe unequipable) diamond or netherite pickaxe in or equipped on the turtle.
 3. (Optional) Kinetic Augment in or equipped on the turtle.
 4. (Optional, linked to #3) Any other pickaxe in the turtle's inventory.
    This pick is used when mining ores, so enchant as you desire!
