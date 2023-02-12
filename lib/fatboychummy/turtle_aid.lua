@@ -35,12 +35,25 @@ local file_helper = require "file_helper"
 ---| "left"
 ---| "right"
 
+---@alias cardinal_direction
+---| "north"
+---| "east"
+---| "south"
+---| "west"
+
 ---@alias turtle_module
 ---| "scanner" # Block Scanner
 ---| "kinetic" # Kinetic Augment
 ---| "pickaxe" # Pickaxe (diamond or netherite)
 ---| "empty"   # Nothing
 ---| "unknown" # Module could not be determined. This cannot be passed to methods expecting a turtle_module, but it may be returned.
+
+---@class block_info
+---@field name string The name of the block scanned.
+---@field state table Some state information about the block.
+---@field x integer The x position relative to the turtle.
+---@field y integer The y position relative to the turtle.
+---@field z integer The z position relative to the turtle.
 
 local DIR = fs.getDir(shell.getRunningProgram())
 local POSITION_CACHE = fs.combine(DIR, "position.dat")
@@ -135,7 +148,35 @@ function aid.load()
     return
   end
 
-  ---@TODO If no data, we'll need a new way to determine our direction.
+  local ok, side = aid.quick_equip("scanner")
+  if ok then
+    local scan = peripheral.call(side, "scan")
+
+    ---@type cardinal_direction
+    local turtle_facing
+
+    for i = 1, #scan do
+      local block = scan[i]
+      if block.x == 0 and block.y == 0 and block.z == 0 then
+        turtle_facing = block.state.facing
+        break
+      end
+    end
+
+    if turtle_facing == "north" then
+      aid.facing = 0
+    elseif turtle_facing == "east" then
+      aid.facing = 1
+    elseif turtle_facing == "south" then
+      aid.facing = 2
+    elseif turtle_facing == "west" then
+      aid.facing = 3
+    else
+      error(("Got unknown direction from scanner: %s"):format(turtle_facing), 0)
+    end
+  else
+    error("Cannot determine direction. Need block scanner.", 0)
+  end
 end
 
 --- Select an item in the turtle's inventory.
