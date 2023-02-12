@@ -13,13 +13,6 @@ local turtle_aid = require "turtle_aid"
 ---@generic T
 ---@class three_dimensional_array<T> : {[integer]:{[integer]:{[integer]:T}}}
 
----@class block_info
----@field name string The name of the block scanned.
----@field state table Some state information about the block.
----@field x integer The x position relative to the turtle.
----@field y integer The y position relative to the turtle.
----@field z integer The z position relative to the turtle.
-
 local ORE_DICT = {
     ["minecraft:iron_ore"] = true,
     ["minecraft:deepslate_iron_ore"] = true,
@@ -40,8 +33,11 @@ local ORE_DICT = {
     ["minecraft:ancient_debris"] = true,
 }
 
-local DIR = fs.getDir(shell.getRunningProgram())
+local PROG = shell.getRunningProgram()
+local DIR = fs.getDir(PROG)
 local ORE_CACHE = fs.combine(DIR, "ores.dat")
+local GENERATED_LINE_1 = "--########## DOG_BOOT ##########"
+-- I should hope nobody has this at the beginning of their startup file...
 
 ---@type QIT<vector>
 local ore_cache = QIT()
@@ -242,4 +238,60 @@ end
 ---@param z integer The Z position of the ore.
 local function mine_to_ore(x, y, z)
   dig_to(get_side_of_ore(x, y, z))
+end
+
+--- Return to the turtle's home location (0,0,0)
+local function return_home()
+  dig_to(0, 0, 0)
+end
+
+--- Check that a file is a dog-generated file or not.
+---@param filename string The file to test.
+---@return boolean
+local function check_file_for_dog(filename)
+  local h = io.open(filename, 'r')
+
+  if not h then
+    return false
+  end
+
+  local line = h:read("*l")
+  h:close()
+
+  return line == GENERATED_LINE_1
+end
+
+--- Create a startup file to recover after a chunk unload.
+--- Will move any other startups that exist temporarily.
+local function build_startup()
+  if fs.exists("startup") and not check_file_for_dog("startup") then
+    fs.move("startup", "dog_old_startup")
+  end
+  if fs.exists("startup.lua") and not check_file_for_dog("startup.lua") then
+    fs.move("startup.lua", "dog_old_startup.lua")
+  end
+
+  local h, err = io.open("startup.lua", 'w')
+  if h then
+    h:write(("%s\nshell.run(\"%s reload\")"):format(GENERATED_LINE_1, PROG))
+    h:close()
+  else
+    error(("Cannot write startup file: %s"):format(err), 0)
+  end
+end
+
+--- Delete the temporary startup file and restore the old startup files.
+local function remove_startup()
+  if fs.exists("startup") and check_file_for_dog("startup") then
+    fs.delete("startup")
+    if fs.exists("dog_old_startup") then
+      fs.move("dog_old_startup", "startup")
+    end
+  end
+  if fs.exists("startup.lua") and check_file_for_dog("startup.lua") then
+    fs.delete("startup.lua")
+    if fs.exists("dog_old_startup.lua") then
+      fs.move("dog_old_startup.lua", "startup")
+    end
+  end
 end
