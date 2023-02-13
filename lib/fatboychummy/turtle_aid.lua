@@ -91,6 +91,7 @@ local facings = {
     vector.new( -1, 0, 0) -- negative X direction, west
 }
 
+---@class turtle_aid
 local aid = {
     ---@type vector
     position = vector.new(),
@@ -133,21 +134,7 @@ local function check_movement(movement)
   end
 end
 
---- Load information from the position cache.
-function aid.load()
-  local data = file_helper.unserialize(POSITION_CACHE)
-
-  if data then
-    local movement = data[1]
-    aid.position = data[2]
-    aid.facing = data[3]
-    aid.fuel = data[4]
-
-    check_movement(movement)
-    write_movement("done")
-    return
-  end
-
+local function get_direction()
   local ok, side = aid.quick_equip("scanner")
   if ok then
     local scan = peripheral.call(side, "scan")
@@ -177,6 +164,24 @@ function aid.load()
   else
     error("Cannot determine direction. Need block scanner.", 0)
   end
+end
+
+--- Load information from the position cache.
+function aid.load()
+  local data = file_helper.unserialize(POSITION_CACHE)
+
+  if data then
+    local movement = data[1]
+    aid.position = data[2]
+    aid.facing = data[3]
+    aid.fuel = data[4]
+
+    check_movement(movement)
+    write_movement("done")
+    return
+  end
+
+  get_direction()
 end
 
 --- Select an item in the turtle's inventory.
