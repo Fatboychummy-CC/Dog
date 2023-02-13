@@ -2,6 +2,7 @@
 
 local expect = require "cc.expect".expect
 local file_helper = require "file_helper"
+local QIT = require "QIT"
 
 ---@alias turtle_facing
 ---| `0` # North (negative Z direction)
@@ -483,6 +484,63 @@ function aid.gravel_protected_dig_up()
   repeat
     turtle.digUp()
   until not turtle.detectUp()
+end
+
+--- Test that we are at a specific position.
+---@param x integer The X position.
+---@param y integer The Y position.
+---@param z integer The Z position.
+---@return boolean at_position
+function aid.is_at(x, y, z)
+  return aid.position.x == x and aid.position.y == y and aid.position.z == z
+end
+
+---@generic T
+---@parameter t array<T> The array to check.
+---@parameter value T The value to test.
+---@return boolean is_in
+local function is_in(t, value)
+  for i = 1, #t do
+    if t[i] == value then
+      return true
+    end
+  end
+
+  return false
+end
+
+
+function aid.base_excluded_items()
+  ---@type QIT<string>
+  local exclude = QIT()
+
+  for module in pairs(EQUIPABLE_MODULE_LOOKUP) do
+    if not is_in(exclude, module) then
+      exclude:Insert(module)
+    end
+  end
+
+  for pick in pairs(PICKAXES) do
+    if not is_in(exclude, pick) then
+      exclude:Insert(pick)
+    end
+  end
+
+  return exclude:Clean()
+end
+
+--- Dump items from the turtle's inventory
+---@param exclusion array<integer> The slots to ignore.
+function aid.dump_inventory(exclusion)
+  for i = 1, 16 do
+    local item = turtle.getItemDetail(i)
+
+    if item and is_in(exclusion, item.name) then
+      turtle.select(i)
+      turtle.refuel() -- nom the fuel
+      turtle.drop()
+    end
+  end
 end
 
 return aid
