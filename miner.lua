@@ -206,9 +206,10 @@ local function main()
       error("No block scanner or geoscanner detected.", 0)
     end
     scan = function()
+      local ok3, err
       repeat
-        local ok, err = pcall(scan2, 8)
-        if not ok then
+        ok3, err = scan2(8)
+        if not ok3 then
           printError("Scanner", err)
           if err == "scanBlocks is on cooldown" then
             printError("Scanner", "Waiting 1 second...")
@@ -217,11 +218,12 @@ local function main()
             error("Some other error occurred with the scanner.", 0)
           end
         end
-      until ok
-      return ok
+      until ok3
+
+      return ok3
     end
   end
-  
+
   local pos = {
     x = 0,
     y = 0,
