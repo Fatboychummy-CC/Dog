@@ -194,15 +194,29 @@ local function BlockEQ(tBlock, sName, sDamage)
   return tBlock.name == sName
 end
 
-local moved = false
-local tLastScan = nil
+local move_direction = nil
+local tLastScan = {}
+local moved = true -- set this to true to force an update.
 local function scanWrapper(func)
   return function(...)
     if tLastScan and not moved then
       return tLastScan
     end
     local tScanData = func(...)
-    tLastScan = tScanData
+    if tScanData then
+      tLastScan = tScanData
+    else
+      -- if we failed to scan now, offset all blocks in the last scan data by the opposite of our move direction, then return it.
+      if move_direction then
+        for i = 1, #tLastScan do
+          tLastScan[i].x = tLastScan[i].x - move_direction.x
+          tLastScan[i].y = tLastScan[i].y - move_direction.y
+          tLastScan[i].z = tLastScan[i].z - move_direction.z
+        end
+      else
+        error("Failed to scan, but we haven't moved. This should never happen.")
+      end
+    end
     moved = false
     return tScanData
   end
@@ -220,6 +234,8 @@ local function main()
       error("No block scanner or geoscanner detected.", 0)
     end
     scan = function()
+      return scan2(8)
+      --[[
       local ok3, err
       repeat
         ok3, err = scan2(8)
@@ -234,7 +250,7 @@ local function main()
         end
       until ok3
 
-      return ok3
+      return ok3]]
     end
   end
 
@@ -320,6 +336,7 @@ local function main()
     pos.y = pos.y - 1
     CheckFuel()
     moved = true
+    move_direction = { x = 0, y = -1, z = 0}
   end
 
   -- move up
@@ -334,6 +351,7 @@ local function main()
     pos.y = pos.y + 1
     CheckFuel()
     moved = true
+    move_direction = { x = 0, y = 1, z = 0}
   end
 
   -- go forward, checks if bedrock is in front
@@ -349,6 +367,7 @@ local function main()
     AddOffset(pos.facing)
     CheckFuel()
     moved = true
+    move_direction = { x = ox, y = oy, z = oz }
   end
 
   local function Right()
