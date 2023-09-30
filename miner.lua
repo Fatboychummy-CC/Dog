@@ -213,6 +213,7 @@ local function scanWrapper(func)
           tLastScan[i].y = tLastScan[i].y - move_direction.y
           tLastScan[i].z = tLastScan[i].z - move_direction.z
         end
+        return tLastScan
       else
         error("Failed to scan, but we haven't moved. This should never happen.")
       end
