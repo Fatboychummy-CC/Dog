@@ -207,7 +207,7 @@ local function scanWrapper(func)
       tLastScan = tScanData
     else
       -- if we failed to scan now, offset all blocks in the last scan data by the opposite of our move direction, then return it.
-      if move_direction then
+      if move_direction and moved then
         for i = 1, #tLastScan do
           tLastScan[i].x = tLastScan[i].x - move_direction.x
           tLastScan[i].y = tLastScan[i].y - move_direction.y
@@ -534,11 +534,9 @@ local function main()
         end
       else
         -- 1.19
-        for name in pairs(tOreDict) do
-          if CurrentScan[i] and CurrentScan[i].name == name then
-            tOres.n = tOres.n + 1
-            tOres[tOres.n] = CurrentScan[i]
-          end
+        if tOreDict[CurrentScan[i].name] then
+          tOres.n = tOres.n + 1
+          tOres[tOres.n] = CurrentScan[i]
         end
       end
     end
@@ -657,6 +655,7 @@ local function main()
     else
       return
     end
+
     return MineOres(tOreDict)
   end
 
