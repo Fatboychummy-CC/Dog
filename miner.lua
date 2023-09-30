@@ -194,6 +194,20 @@ local function BlockEQ(tBlock, sName, sDamage)
   return tBlock.name == sName
 end
 
+local moved = false
+local tLastScan = nil
+local function scanWrapper(func)
+  return function(...)
+    if tLastScan and not moved then
+      return tLastScan
+    end
+    local tScanData = func(...)
+    tLastScan = tScanData
+    moved = false
+    return tScanData
+  end
+end
+
 local function main()
   print("Main", "Init")
   -- if the arguments were bad, stop
@@ -223,6 +237,8 @@ local function main()
       return ok3
     end
   end
+
+  scan = scanWrapper(scan)
 
   local pos = {
     x = 0,
@@ -303,6 +319,7 @@ local function main()
     ensure(turtle.down, turtle.digDown, turtle.attackDown)
     pos.y = pos.y - 1
     CheckFuel()
+    moved = true
   end
 
   -- move up
@@ -316,6 +333,7 @@ local function main()
     ensure(turtle.up, turtle.digUp, turtle.attackUp)
     pos.y = pos.y + 1
     CheckFuel()
+    moved = true
   end
 
   -- go forward, checks if bedrock is in front
@@ -330,6 +348,7 @@ local function main()
     ensure(turtle.forward, turtle.dig, turtle.attack)
     AddOffset(pos.facing)
     CheckFuel()
+    moved = true
   end
 
   local function Right()
