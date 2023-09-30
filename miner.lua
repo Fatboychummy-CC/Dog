@@ -145,7 +145,17 @@ local function GetDirection(tScanData)
 
   local tBlock = GetBlockAt(0, 0, 0, tScanData)
   if not tBlock or not tBlock.state or not tBlock.state.facing then
-    error("Cannot get direction")
+    -- Notify the user that we could not determine the state automatically,
+    -- then request the facing as an integer from 0-3 where negative Z is north (0), positive X is east (1), positive Z is south (2), and negative X is west (3).
+    print("GetDirection", "Could not determine facing automatically.")
+    print("GetDirection", "Please enter the current facing of the turtle, use the F3 menu to determine which direction is which.")
+    print("GetDirection", "0 = North, 1 = East, 2 = South, 3 = West")
+    local nFacing
+    repeat
+      nFacing = tonumber(read())
+    until type(nFacing) == "number"
+    local tFacings = { "north", "east", "south", "west" }
+    return tFacings[nFacing + 1]
   end
   return tBlock and tBlock.state and tBlock.state.facing or "unknown"
 end
