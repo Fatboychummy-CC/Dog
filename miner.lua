@@ -138,6 +138,8 @@ local function GetBlockAt(x, y, z, tScanData)
       return tScanData[i]
     end
   end
+
+  return { name = "minecraft:air", metadata = 0 }
 end
 
 local function GetDirection(tScanData)
@@ -204,7 +206,19 @@ local function main()
       error("No block scanner or geoscanner detected.", 0)
     end
     scan = function()
-      return scan2(8)
+      repeat
+        local ok, err = pcall(scan2, 8)
+        if not ok then
+          printError("Scanner", err)
+          if err == "scanBlocks is on cooldown" then
+            printError("Scanner", "Waiting 1 second...")
+            sleep(1)
+          else
+            error("Some other error occurred with the scanner.", 0)
+          end
+        end
+      until ok
+      return ok
     end
   end
   
