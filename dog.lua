@@ -3,6 +3,8 @@
 --- uses either plethora's block scanner or advanced peripheral's geoscanner to
 --- detect where ores are along its path and mine to them.
 
+local expect = require "cc.expect".expect
+
 -- Import libraries
 local aid = require("lib.turtle_aid")
 local file_helper = require("lib.file_helper")
@@ -10,11 +12,10 @@ local logging = require("lib.logging")
 local simple_argparse = require("lib.simple_argparse")
 
 -- Constants
-local LOG_FILE = fs.combine(file_helper.working_directory, "dog.log")
-local STATE_FILE = fs.combine(file_helper.working_directory, "dog.state")
+local LOG_FILE = fs.combine(file_helper.working_directory, "data/dog.log") -- Logger does not use file_helper, so we need to manually tell it to use this directory.
+local STATE_FILE = "data/dog.state"
 
 -- Variables
-local args = {...}
 local max_depth = 512
 local log_level = logging.LOG_LEVEL.INFO
 local log_window = term.current()
@@ -186,51 +187,32 @@ local state = {
   state_info = {}
 }
 
---- Strip the scan data down to just the coordinates and block name.
+--- Strip the scan data down to just the coordinates and block name, then offset every block by the turtle's offset from home.
 ---@param data table<integer, table>
-local function strip_scan(data)
+local function strip_and_offset_scan(data)
   local stripped = {}
+
   for _, block in ipairs(data) do
     table.insert(stripped, {
-      x = block.x,
-      y = block.y,
-      z = block.z,
+      x = block.x + aid.position.x,
+      y = block.y + aid.position.y,
+      z = block.z + aid.position.z,
       name = block.name
     })
   end
+
   return stripped
 end
 
---- Offset the scan data by the given offset, edit the data in-place.
----@param data table<integer, table>
----@param x integer
----@param y integer
----@param z integer
-local function offset_scan(data, x, y, z)
-  for _, block in ipairs(data) do
-    block.x = block.x + x
-    block.y = block.y + y
-    block.z = block.z + z
-  end
-end
-
---- Generate a function that also calls offset_scan.
-local function move_offset_wrapper(func, x, y, z)
-  return function(data, ...)
-    local result = table.pack(func(...))
-    offset_scan(data, x, y, z)
-    return table.unpack(result, 1, result.n)
-  end
-end
-local go_down = move_offset_wrapper(aid.go_down, 0, -1, 0)
-local go_up = move_offset_wrapper(aid.go_up, 0, 1, 0)
-
 local function save_state()
-  file_helper.serialize(STATE_FILE, state)
+  file_helper.serialize(STATE_FILE, state, true)
 end
 
 local function load_state()
-  local loaded_state = file_helper.unserialize(STATE_FILE)
+  local loaded_state = file_helper.unserialize(STATE_FILE ,{
+    state = "digdown",
+    state_info = {}
+  })
   if loaded_state then
     state = loaded_state
   end
@@ -250,14 +232,14 @@ local function dig_down()
   local scanned = scan()
   if type(scanned) == "table" then
     -- Scan was a success, sort through it for the first ore (if there is one).
-    state.state_info.last_scan = strip_scan(scanned)
+    state.state_info.last_scan = strip_and_offset_scan(scanned)
   end
 
   ---@TODO This is a temporary solution, we need to actually calculate the closest ore.
   local ore
-  for _, block in ipairs(state.state_info.last_scan) do
+  for i, block in ipairs(state.state_info.last_scan) do
     if ORE_DICT[block.name] then
-      ore = block
+      ore = i
       break
     end
   end
@@ -271,7 +253,7 @@ local function dig_down()
 
   -- if not, go down.
   turtle.digDown()
-  go_down()
+  aid.go_down()
   state.state_info.depth = aid.position.y
 end
 
@@ -279,7 +261,7 @@ local seek_context = logging.create_context("Seek")
 local function seek()
   seek_context.debug("Seeking to ore.")
 
-  local ore = state.state_info.ore
+  local ore = state.state_info.last_scan[state.state_info.ore]
   local x, y, z = ore.x, ore.y, ore.z
   local direction, distance = aid.get_direction_to(vector.new(x, y, z))
 
@@ -290,7 +272,7 @@ local function seek()
     elseif direction == "down" then
       turtle.digDown()
     else
-      aid.face(direction)
+      aid.face(direction --[[@as cardinal_direction]])
       turtle.dig()
     end
 
@@ -299,21 +281,21 @@ local function seek()
     local scanned = scan()
     if type(scanned) == "table" then
       -- Scan was a success, sort through it for the first ore (if there is one).
-      state.state_info.last_scan = strip_scan(scanned)
+      state.state_info.last_scan = strip_and_offset_scan(scanned)
     end
 
     ---@TODO This is a temporary solution, we need to actually calculate the closest ore.
-    local ore
-    for _, block in ipairs(state.state_info.last_scan) do
+    local new_ore
+    for i, block in ipairs(state.state_info.last_scan) do
       if ORE_DICT[block.name] then
-        ore = block
+        new_ore = i
         break
       end
     end
 
-    if ore then
+    if new_ore then
       seek_context.info("Found another ore, seeking to it.")
-      state.state_info.ore = ore
+      state.state_info.ore = new_ore
       state.state = "seeking"
     else
       seek_context.info("No more ores found, returning from seek.")
@@ -324,12 +306,12 @@ local function seek()
 
   if direction == "up" then
     aid.gravel_protected_dig_up()
-    go_up()
+    aid.go_up()
   elseif direction == "down" then
     turtle.digDown()
-    go_down()
+    aid.go_down()
   else
-    aid.face(direction)
+    aid.face(direction --[[@as cardinal_direction]])
 
     local success, block = turtle.inspect()
     if success and block.name == "minecraft:bedrock" then
@@ -340,15 +322,6 @@ local function seek()
 
     aid.gravel_protected_dig()
     aid.go_forward()
-    if direction == "north" then
-      offset_scan(state.state_info.last_scan, 0, 0, 1)
-    elseif direction == "south" then
-      offset_scan(state.state_info.last_scan, 0, 0, -1)
-    elseif direction == "east" then
-      offset_scan(state.state_info.last_scan, -1, 0, 0)
-    elseif direction == "west" then
-      offset_scan(state.state_info.last_scan, 1, 0, 0)
-    end
   end
 end
 
@@ -366,7 +339,7 @@ local function return_home()
     turtle.digDown()
     aid.go_down()
   else
-    aid.face(direction)
+    aid.face(direction --[[@as cardinal_direction]])
     aid.gravel_protected_dig()
     aid.go_forward()
   end
@@ -388,34 +361,55 @@ local function return_seek()
     turtle.digDown()
     aid.go_down()
   else
-    aid.face(direction)
+    aid.face(direction --[[@as cardinal_direction]])
     aid.gravel_protected_dig()
     aid.go_forward()
   end
 end
 
+-- The turtle cannot know what direction it is facing initially, ask for that.
+print("What direction is the turtle facing (north, south, east, west)? You can use the F3 menu to determine this.")
+local _direction
+repeat
+  _direction = read()
+until _direction == "north" or _direction == "south" or _direction == "east" or _direction == "west"
+aid.facing = _direction == "north" and 0 or _direction == "east" and 1 or _direction == "south" and 2 or 3
+
 load_state() -- initial load
-local tick_context = logging.create_context("Tick")
+
 -- Main loop
-while true do
-  tick_context.debug("Tick. State is:", state.state)
+local function main()
+  local tick_context = logging.create_context("Tick")
+  while true do
+    tick_context.debug("Tick. State is:", state.state)
 
-  if state.state == "digdown" then
-    dig_down()
-  elseif state.state == "seeking" then
-    seek()
-  elseif state.state == "returning_home" then
-    if return_home() then
-      break
+    if state.state == "digdown" then
+      dig_down()
+    elseif state.state == "seeking" then
+      seek()
+    elseif state.state == "returning_home" then
+      if return_home() then
+        break
+      end
+    elseif state.state == "returning_from_seek" then
+      return_seek()
+    else
+      error("Invalid state: " .. tostring(state.state), 0)
     end
-  elseif state.state == "returning_from_seek" then
-    return_seek()
-  else
-    error("Invalid state: " .. state.state, 0)
-  end
 
-  save_state() -- save the state at the end of each tick, so we don't need to spam it everywhere
+    save_state() -- save the state at the end of each tick, so we don't need to spam it everywhere
+  end
 end
 
+local main_context = logging.create_context("Main")
+local ok, err = xpcall(main, debug.traceback)
+
+if not ok then
+  main_context.fatal(err)
+  logging.dump_log(LOG_FILE)
+end
+
+-- Cleanup
+main_context.debug("Cleaning up...")
 aid.clear_save()
-fs.delete(STATE_FILE)
+file_helper.delete(STATE_FILE)

@@ -57,7 +57,7 @@ local file_helper = require "lib.file_helper"
 ---@field z integer The z position relative to the turtle.
 
 local DIR = fs.getDir(shell.getRunningProgram())
-local POSITION_CACHE = fs.combine(DIR, "position.dat")
+local POSITION_CACHE = "position.dat"
 
 local EQUIPABLE_MODULE_LOOKUP = {
     ["minecraft:diamond_pickaxe"] = "pickaxe",
@@ -185,7 +185,7 @@ end
 
 --- Remove the position cache file, useful for when your program ends.
 function aid.clear_save()
-  fs.delete(POSITION_CACHE)
+  file_helper.delete(POSITION_CACHE)
 end
 
 --- Select an item in the turtle's inventory.
@@ -560,11 +560,18 @@ function aid.turn_right()
 end
 
 --- Turn to face the specified direction.
----@param new_facing turtle_facing The direction to face.
+---@param new_facing turtle_facing|cardinal_direction The direction to face.
 function aid.face(new_facing)
-  expect(1, new_facing, "number")
-  if new_facing ~= 1 or new_facing ~= 2 or new_facing ~= 3 or new_facing ~= 0 then
+  expect(1, new_facing, "number", "string")
+
+  if type(new_facing) == "number" and new_facing ~= 1 and new_facing ~= 2 and new_facing ~= 3 and new_facing ~= 0 then
     error(("Bad argument #1: expected integers 0, 1, 2, or 3; got %s."):format(new_facing), 2)
+  end
+  if type(new_facing) == "string" then
+    if new_facing ~= "north" and new_facing ~= "east" and new_facing ~= "south" and new_facing ~= "west" then
+      error(("Bad argument #1: expected strings 'north', 'east', 'south', or 'west'; got %s."):format(new_facing), 2)
+    end
+    new_facing = new_facing == "north" and 0 or new_facing == "east" and 1 or new_facing == "south" and 2 or 3 --[[@as turtle_facing]]
   end
 
   if aid.facing == new_facing then
