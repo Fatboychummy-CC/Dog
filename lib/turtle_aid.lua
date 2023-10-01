@@ -183,6 +183,11 @@ function aid.load()
   end
 end
 
+--- Remove the position cache file, useful for when your program ends.
+function aid.clear_save()
+  fs.delete(POSITION_CACHE)
+end
+
 --- Select an item in the turtle's inventory.
 ---@param name string? The item to select, or nil to select the first available empty slot.
 ---@return boolean selected If the turtle succeeded in finding the item to select.
@@ -394,6 +399,39 @@ function aid.dig_forward()
   repeat
     local digging = peripheral.call(swapped_side, "swing")
   until not digging
+end
+
+--- Get the direction to a block relative to the turtle.
+---@param block vector The block position to get the direction to.
+---@return cardinal_direction|"up"|"down"? direction The direction needed to go to the block. Returns nil if the turtle is at the block already.
+---@return integer distance The distance to the block.
+function aid.get_direction_to(block)
+  expect(1, block, "table")
+
+  -- Calculate the offset on each axis from the turtle
+  local x, y, z = block.x - aid.position.x, block.y - aid.position.y, block.z - aid.position.z
+  local distance = math.abs(x) + math.abs(y) + math.abs(z)
+
+  if distance == 0 then
+    return nil, 0
+  end
+
+  -- For each axis, determine if we need to move in that direction
+  if x > 0 then
+    return "east", distance
+  elseif x < 0 then
+    return "west", distance
+  elseif y > 0 then
+    return "up", distance
+  elseif y < 0 then
+    return "down", distance
+  elseif z > 0 then
+    return "south", distance
+  elseif z < 0 then
+    return "north", distance
+  end
+
+  error("Failed to calculate direction to block.", 0)
 end
 
 --- Move forward, updating the turtle's position information.
