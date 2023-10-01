@@ -218,6 +218,25 @@ local function load_state()
   end
 end
 
+--- Get the closest ore to the turtle.
+---@return integer? closest_ore_index The index of the closest ore in the last scan, or nil if no ores were found in the scan.
+local function get_closest_ore()
+  -- Since we now offset the last scan, we will need to calculate based on the
+  -- position of the turtle as well.
+  local closest_ore
+
+  local closest_distance = math.huge
+  for i, block in ipairs(state.state_info.last_scan) do
+    local distance = math.abs(block.x - aid.position.x) + math.abs(block.y - aid.position.y) + math.abs(block.z - aid.position.z)
+    if ORE_DICT[block.name] and distance < closest_distance then
+      closest_ore = i
+      closest_distance = distance
+    end
+  end
+
+  return closest_ore
+end
+
 local dig_context = logging.create_context("Dig Down")
 local function dig_down()
   dig_context.debug("Digging down.")
@@ -235,14 +254,7 @@ local function dig_down()
     state.state_info.last_scan = strip_and_offset_scan(scanned)
   end
 
-  ---@TODO This is a temporary solution, we need to actually calculate the closest ore.
-  local ore
-  for i, block in ipairs(state.state_info.last_scan) do
-    if ORE_DICT[block.name] then
-      ore = i
-      break
-    end
-  end
+  local ore = get_closest_ore()
 
   -- if we found an ore, we want to seek it.
   if ore then
@@ -259,11 +271,12 @@ end
 
 local seek_context = logging.create_context("Seek")
 local function seek()
-  seek_context.debug("Seeking to ore.")
-
   local ore = state.state_info.last_scan[state.state_info.ore]
   local x, y, z = ore.x, ore.y, ore.z
-  local direction, distance = aid.get_direction_to(vector.new(x, y, z))
+  local direction, distance = aid.get_direction_to(vector.new(x, y, z), true)
+  seek_context.debug("Seeking to ore.")
+  seek_context.debug("Ore is", distance, "blocks away, positioned at", x, y, z)
+  seek_context.debug("Turtle is positioned at", aid.position.x, aid.position.y, aid.position.z)
 
   if distance == 1 then
     seek_context.info("Ore is adjacent, mining.")
@@ -275,6 +288,7 @@ local function seek()
       aid.face(direction --[[@as cardinal_direction]])
       turtle.dig()
     end
+    table.remove(state.state_info.last_scan, state.state_info.ore) -- remove the ore from the scan
 
     seek_context.info("Ore mined, rescanning for more ores.")
     -- rescan for ores
@@ -284,14 +298,7 @@ local function seek()
       state.state_info.last_scan = strip_and_offset_scan(scanned)
     end
 
-    ---@TODO This is a temporary solution, we need to actually calculate the closest ore.
-    local new_ore
-    for i, block in ipairs(state.state_info.last_scan) do
-      if ORE_DICT[block.name] then
-        new_ore = i
-        break
-      end
-    end
+    local new_ore = get_closest_ore()
 
     if new_ore then
       seek_context.info("Found another ore, seeking to it.")
@@ -310,6 +317,8 @@ local function seek()
   elseif direction == "down" then
     turtle.digDown()
     aid.go_down()
+  elseif not direction then
+    error("Direction is nil, we're already on top of the detected ore!", 0)
   else
     aid.face(direction --[[@as cardinal_direction]])
 
