@@ -285,16 +285,16 @@ end
 --- Check if a module type is equipped on a specific side.
 ---@param module turtle_module The module to check for.
 ---@param side side? The side to check. Leave nil to check both sides.
----@return boolean is_equipped
+---@return side? equipped_side The equipped side, or nil if not there.
 function aid.is_module_equipped(module, side)
   expect(1, module, "string")
-  expect(2, side, "string")
+  expect(2, side, "string", "nil")
 
   if not side then
-    return aid.currently_equipped.left == module or aid.currently_equipped.right == module
+    return (aid.currently_equipped.left == module and "left") or (aid.currently_equipped.right == module and "right") or nil
   end
 
-  return aid.currently_equipped[side] == module
+  return aid.currently_equipped[side] == module and side or nil
 end
 
 --- Get information about what module is on a specific side of the turtle.
