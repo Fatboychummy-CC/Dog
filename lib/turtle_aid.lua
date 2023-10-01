@@ -403,10 +403,17 @@ end
 
 --- Get the direction to a block relative to the turtle.
 ---@param block vector The block position to get the direction to.
+---@param yfirst boolean? If true, the turtle will attempt to move on the Y axis first.
+---@param ylast boolean? If true, the turtle will attempt to move on the Y axis last.
 ---@return cardinal_direction|"up"|"down"? direction The direction needed to go to the block. Returns nil if the turtle is at the block already.
 ---@return integer distance The distance to the block.
-function aid.get_direction_to(block)
+function aid.get_direction_to(block, yfirst, ylast)
   expect(1, block, "table")
+  expect(2, yfirst, "boolean", "nil")
+  expect(3, ylast, "boolean", "nil")
+  if yfirst and ylast then
+    error("Cannot specify both yfirst and ylast.", 2)
+  end
 
   -- Calculate the offset on each axis from the turtle
   local x, y, z = block.x - aid.position.x, block.y - aid.position.y, block.z - aid.position.z
@@ -417,18 +424,48 @@ function aid.get_direction_to(block)
   end
 
   -- For each axis, determine if we need to move in that direction
-  if x > 0 then
-    return "east", distance
-  elseif x < 0 then
-    return "west", distance
-  elseif y > 0 then
-    return "up", distance
-  elseif y < 0 then
-    return "down", distance
-  elseif z > 0 then
-    return "south", distance
-  elseif z < 0 then
-    return "north", distance
+  if not yfirst and not ylast then
+    if x > 0 then
+      return "east", distance
+    elseif x < 0 then
+      return "west", distance
+    elseif y > 0 then
+      return "up", distance
+    elseif y < 0 then
+      return "down", distance
+    elseif z > 0 then
+      return "south", distance
+    elseif z < 0 then
+      return "north", distance
+    end
+  elseif yfirst then
+    if y > 0 then
+      return "up", distance
+    elseif y < 0 then
+      return "down", distance
+    elseif x > 0 then
+      return "east", distance
+    elseif x < 0 then
+      return "west", distance
+    elseif z > 0 then
+      return "south", distance
+    elseif z < 0 then
+      return "north", distance
+    end
+  elseif ylast then
+    if x > 0 then
+      return "east", distance
+    elseif x < 0 then
+      return "west", distance
+    elseif z > 0 then
+      return "south", distance
+    elseif z < 0 then
+      return "north", distance
+    elseif y > 0 then
+      return "up", distance
+    elseif y < 0 then
+      return "down", distance
+    end
   end
 
   error("Failed to calculate direction to block.", 0)
@@ -547,6 +584,7 @@ function aid.gravel_protected_dig()
   until not turtle.detect()
 end
 
+--- Gravel should break when hitting the turtle, but just in case it for some reason acts weird.
 function aid.gravel_protected_dig_up()
   repeat
     turtle.digUp()
