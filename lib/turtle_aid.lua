@@ -64,12 +64,12 @@ local EQUIPABLE_MODULE_LOOKUP = {
     ["minecraft:netherite_pickaxe"] = "pickaxe",
     ["plethora:module_scanner"] = "scanner",
     ["plethora:module_kinetic"] = "kinetic",
-    ["geoScanner"] = "geoScanner"
+    ["advancedperipherals:geo_scanner"] = "geoScanner"
 }
 local EQUIPABLE_MODULE_I_LOOKUP = {
     ["scanner"] = "plethora:module_scanner",
     ["kinetic"] = "plethora:module_kinetic",
-    ["geoScanner"] = "geoScanner"
+    ["geoScanner"] = "advancedperipherals:geo_scanner"
 }
 
 local EQUIPABLE_PICKAXES = {
@@ -240,12 +240,13 @@ end
 function aid.swap_module(module, side)
   expect(1, module, "string")
   expect(2, side, "string")
-
-  if aid.currently_equipped.left == module then
-    return false, "Module already equipped on left side."
-  end
-  if aid.currently_equipped.right == module then
-    return false, "Module already equipped on right side."
+  if module ~= "empty" then
+    if aid.currently_equipped.left == module then
+      return false, "Module already equipped on left side."
+    end
+    if aid.currently_equipped.right == module then
+      return false, "Module already equipped on right side."
+    end
   end
 
   ---@type fun()
@@ -291,9 +292,16 @@ function aid.is_module_equipped(module, side)
   expect(2, side, "string", "nil")
 
   if not side then
+    if not aid.currently_equipped.left or not aid.currently_equipped.right then
+      aid.get_module_info("left")
+      aid.get_module_info("right")
+    end
     return (aid.currently_equipped.left == module and "left") or (aid.currently_equipped.right == module and "right") or nil
   end
 
+  if not aid.currently_equipped[side] then
+    aid.get_module_info(side)
+  end
   return aid.currently_equipped[side] == module and side or nil
 end
 
@@ -303,8 +311,9 @@ end
 function aid.get_module_info(side)
   expect(1, side, "string")
 
-  if not aid.swap_module("empty", side) then
-    error("Failed to unequip module.", 0)
+  local ok, reason = aid.swap_module("empty", side)
+  if not ok and reason ~= ("Module already equipped on %s side."):format(side) then
+    error(reason, 0)
   end
 
   local info = turtle.getItemDetail()
