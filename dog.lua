@@ -31,7 +31,7 @@ parser.add_option("loglevel", "The log level to use.", "INFO")
 parser.add_option("georange", "The range to use for the geoscanner, if using Advanced Peripherals.", geoscanner_range)
 parser.add_flag("h", "help", "Show this help message and exit.")
 parser.add_flag("f", "fuel", "Attempt to refuel as needed from ores mined.")
-parser.add_flog("v", "version", "Show version information and exit.")
+parser.add_flag("v", "version", "Show version information and exit.")
 parser.add_argument("max_offset", "The maximum offset from the centerpoint to mine to.", false,  max_offset)
 
 local parsed = parser.parse(table.pack(...))
