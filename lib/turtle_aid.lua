@@ -605,7 +605,7 @@ function aid.find_chest()
     if peripheral.hasType("front", "inventory") then
       return true
     end
-    turtle.turnRight()
+    aid.turn_right()
   end
 
   return false
