@@ -23,7 +23,8 @@ local geoscanner_range = 8
 local max_offset = 8
 local scan = nil ---@type fun():table<integer, table> Set during initialization.
 local do_fuel = false
-local version = "V0.10.2"
+local version = "V0.10.3"
+local latest_changes = [[Added more checks for bedrock. There are still a few cases I need to check for, but this should fix most of the issues.]]
 
 local parser = simple_argparse.new_parser("dog", "Dog is a program run on mining turtles which is used to find ores and mine them. Unlike quarry programs, this program digs in a straight line down and uses either plethora's block scanner or advanced peripheral's geoscanner to detect where ores are along its path and mine to them.")
 parser.add_option("depth", "The maximum depth to dig to.", max_depth)
@@ -44,6 +45,7 @@ if parsed.flags.help then
 end
 if parsed.flags.version then
   print(version)
+  print("Latest update notes:", latest_changes)
   return
 end
 if parsed.flags.fuel then
@@ -345,6 +347,33 @@ local function dig_down()
   state.state_info.depth = aid.position.y
 end
 
+local bedrock_watch = logging.create_context("Bedrock Watch")
+local function inspect_for_bedrock(direction)
+  if direction == "forward" then
+    local success, block = turtle.inspect()
+    if success and block.name == "minecraft:bedrock" then
+      bedrock_watch.warn("Hit bedrock, returning home.")
+      state.state = "returning_home"
+      return true
+    end
+  elseif direction == "up" then
+    local success, block = turtle.inspectUp()
+    if success and block.name == "minecraft:bedrock" then
+      bedrock_watch.warn("Hit bedrock, returning home.")
+      state.state = "returning_home"
+      return true
+    end
+  elseif direction == "down" then
+    local success, block = turtle.inspectDown()
+    if success and block.name == "minecraft:bedrock" then
+      bedrock_watch.warn("Hit bedrock, returning home.")
+      state.state = "returning_home"
+      return true
+    end
+  end
+  return false
+end
+
 local seek_context = logging.create_context("Seek")
 local function seek()
   local ore = state.state_info.last_scan[state.state_info.ore]
@@ -388,9 +417,14 @@ local function seek()
   end
 
   if direction == "up" then
+    ---@TODO: If bedrock is above, currently the turtle will be stuck. We will need to add a path retracer for this.
+    if inspect_for_bedrock("up") then return end
+
     aid.gravel_protected_dig_up()
     aid.go_up()
   elseif direction == "down" then
+    if inspect_for_bedrock("down") then return end
+
     turtle.digDown()
     aid.go_down()
   elseif not direction then
@@ -398,12 +432,7 @@ local function seek()
   else
     aid.face(direction --[[@as cardinal_direction]])
 
-    local success, block = turtle.inspect()
-    if success and block.name == "minecraft:bedrock" then
-      seek_context.warn("Hit bedrock, returning home.")
-      state.state = "returning_home"
-      return
-    end
+    if inspect_for_bedrock("forward") then return end
 
     aid.gravel_protected_dig()
     aid.go_forward()
