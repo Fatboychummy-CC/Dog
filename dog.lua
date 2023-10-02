@@ -23,7 +23,7 @@ local geoscanner_range = 8
 local max_offset = 8
 local scan = nil ---@type fun():table<integer, table> Set during initialization.
 local do_fuel = false
-local version = "V0.9.2"
+local version = "V0.10.2"
 
 local parser = simple_argparse.new_parser("dog", "Dog is a program run on mining turtles which is used to find ores and mine them. Unlike quarry programs, this program digs in a straight line down and uses either plethora's block scanner or advanced peripheral's geoscanner to detect where ores are along its path and mine to them.")
 parser.add_option("depth", "The maximum depth to dig to.", max_depth)
@@ -477,8 +477,17 @@ local function dump_inventory()
   turtle.select(1) -- ensure the first slot is selected always.
 end
 
+--- Check that the turtle's inventory isn't too full.
+---@return boolean full True if the inventory is full, false otherwise.
 local function check_inventory()
   return turtle.getItemCount(15) > 0 -- we leave a single slot open in case the turtle comes across a new item while returning home.
+end
+
+--- Check that the turtle's fuel level isn't too low. Fuel is considered "too low"
+--- if distance to the surface + 50 is greater than the fuel level.
+---@return boolean low True if the fuel level is low, false otherwise.
+local function check_fuel()
+  return turtle.getFuelLevel() < (math.abs(aid.position.y) + math.abs(aid.position.z) + math.abs(aid.position.x) + 50)
 end
 
 -- The turtle cannot know what direction it is facing initially, ask for that.
@@ -510,6 +519,12 @@ local function main()
       dig_down()
     elseif state.state == "seeking" then
       seek()
+    elseif state.state == "fuel_low" then
+      if return_home() then
+        dump_inventory()
+        tick_context.fatal("Low on fuel.")
+        break
+      end
     elseif state.state == "inventory_full" then
       if return_home() then
         dump_inventory()
@@ -528,6 +543,11 @@ local function main()
 
     if check_inventory() then
       state.state = "inventory_full"
+    end
+
+    if check_fuel() then
+      tick_context.warn("Low on fuel! Returning to the surface.")
+      state.state = "fuel_low"
     end
 
     save_state() -- save the state at the end of each tick, so we don't need to spam it everywhere
