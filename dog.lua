@@ -23,7 +23,7 @@ local geoscanner_range = 8
 local max_offset = 8
 local scan = nil ---@type fun():table<integer, table> Set during initialization.
 local do_fuel = false
-local version = "V0.9.0"
+local version = "V0.9.1"
 
 local parser = simple_argparse.new_parser("dog", "Dog is a program run on mining turtles which is used to find ores and mine them. Unlike quarry programs, this program digs in a straight line down and uses either plethora's block scanner or advanced peripheral's geoscanner to detect where ores are along its path and mine to them.")
 parser.add_option("depth", "The maximum depth to dig to.", max_depth)
@@ -185,8 +185,11 @@ end
 -- not exist, the turtle should assume it is starting from the surface.
 
 local ORE_DICT = {
+  -- ## BASE ORES ##
   ["minecraft:iron_ore"] = true,
   ["minecraft:deepslate_iron_ore"] = true,
+  ["minecraft:copper_ore"] = true,
+  ["minecraft:deepslate_copper_ore"] = true,
   ["minecraft:gold_ore"] = true,
   ["minecraft:deepslate_gold_ore"] = true,
   ["minecraft:diamond_ore"] = true,
@@ -202,6 +205,41 @@ local ORE_DICT = {
   ["minecraft:deepslate_redstone_ore"] = true,
   ["minecraft:nether_gold_ore"] = true,
   ["minecraft:ancient_debris"] = true,
+
+  -- ##  MODDED ORES  ##
+  -- Create
+  ["create:zinc_ore"] = true,
+  ["create_deepslate_zinc_ore"] = true,
+
+  -- Mekanism
+  ["mekanism:tin_ore"] = true,
+  ["mekanism:deepslate_tin_ore"] = true,
+  ["mekanism:osmium_ore"] = true,
+  ["mekanism:deepslate_osmium_ore"] = true,
+  ["mekanism:uranium_ore"] = true,
+  ["mekanism:deepslate_uranium_ore"] = true,
+  ["mekanism:fluorite_ore"] = true,
+  ["mekanism:deepslate_fluorite_ore"] = true,
+  ["mekanism:lead_ore"] = true,
+  ["mekanism:deepslate_lead_ore"] = true,
+  
+  -- Thermal
+  ["thermal:apatite_ore"] = true,
+  ["thermal:deepslate_apatite_ore"] = true,
+  ["thermal:cinnabar_ore"] = true,
+  ["thermal:deepslate_cinnabar_ore"] = true,
+  ["thermal:niter_ore"] = true,
+  ["thermal:deepslate_niter_ore"] = true,
+  ["thermal:sulfur_ore"] = true,
+  ["thermal:deepslate_sulfur_ore"] = true,
+  ["thermal:tin_ore"] = true,
+  ["thermal:deepslate_tin_ore"] = true,
+  ["thermal:lead_ore"] = true,
+  ["thermal:deepslate_lead_ore"] = true,
+  ["thermal:silver_ore"] = true,
+  ["thermal:deepslate_silver_ore"] = true,
+  ["thermal:nickel_ore"] = true,
+  ["thermal:deepslate_nickel_ore"] = true,
 }
 
 local state = {
