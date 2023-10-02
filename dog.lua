@@ -23,6 +23,7 @@ local geoscanner_range = 8
 local max_offset = 8
 local scan = nil ---@type fun():table<integer, table> Set during initialization.
 local do_fuel = false
+local version = "V0.9.0"
 
 local parser = simple_argparse.new_parser("dog", "Dog is a program run on mining turtles which is used to find ores and mine them. Unlike quarry programs, this program digs in a straight line down and uses either plethora's block scanner or advanced peripheral's geoscanner to detect where ores are along its path and mine to them.")
 parser.add_option("depth", "The maximum depth to dig to.", max_depth)
@@ -30,6 +31,7 @@ parser.add_option("loglevel", "The log level to use.", "INFO")
 parser.add_option("georange", "The range to use for the geoscanner, if using Advanced Peripherals.", geoscanner_range)
 parser.add_flag("h", "help", "Show this help message and exit.")
 parser.add_flag("f", "fuel", "Attempt to refuel as needed from ores mined.")
+parser.add_flog("v", "version", "Show version information and exit.")
 parser.add_argument("max_offset", "The maximum offset from the centerpoint to mine to.", false,  max_offset)
 
 local parsed = parser.parse(table.pack(...))
@@ -38,6 +40,10 @@ local parsed = parser.parse(table.pack(...))
 if parsed.flags.help then
   local _, h = term.getSize()
   textutils.pagedPrint(parser.usage())
+  return
+end
+if parsed.flags.version then
+  print(version)
   return
 end
 if parsed.flags.fuel then
