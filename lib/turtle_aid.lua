@@ -598,4 +598,17 @@ function aid.gravel_protected_dig_up()
   until not turtle.detectUp()
 end
 
+--- Locate a chest around the turtle.
+---@return boolean found_chest If the turtle found a chest. If true, the turtle is now facing the chest.
+function aid.find_chest()
+  for i = 1, 4 do
+    if peripheral.hasType("front", "inventory") then
+      return true
+    end
+    turtle.turnRight()
+  end
+
+  return false
+end
+
 return aid

@@ -20,24 +20,31 @@ local max_depth = 512
 local log_level = logging.LOG_LEVEL.INFO
 local log_window = term.current()
 local geoscanner_range = 8
+local max_offset = 8
 local scan = nil ---@type fun():table<integer, table> Set during initialization.
+local do_fuel = false
 
 local parser = simple_argparse.new_parser("dog", "Dog is a program run on mining turtles which is used to find ores and mine them. Unlike quarry programs, this program digs in a straight line down and uses either plethora's block scanner or advanced peripheral's geoscanner to detect where ores are along its path and mine to them.")
 parser.add_option("depth", "The maximum depth to dig to.", max_depth)
 parser.add_option("loglevel", "The log level to use.", "INFO")
-parser.add_option("georange", "The range to use for the geoscanner, if using Advanced Peripherals.", 8)
+parser.add_option("georange", "The range to use for the geoscanner, if using Advanced Peripherals.", geoscanner_range)
 parser.add_flag("h", "help", "Show this help message and exit.")
 parser.add_flag("f", "fuel", "Attempt to refuel as needed from ores mined.")
-parser.add_argument("max_offset", "The maximum offset from the centerpoint to mine to.", false,  8)
+parser.add_argument("max_offset", "The maximum offset from the centerpoint to mine to.", false,  max_offset)
 
 local parsed = parser.parse(table.pack(...))
 
+-- FLAGS
 if parsed.flags.help then
   local _, h = term.getSize()
   textutils.pagedPrint(parser.usage())
   return
 end
+if parsed.flags.fuel then
+  do_fuel = true
+end
 
+-- OPTIONS
 if parsed.options.loglevel then
   log_level = logging.LOG_LEVEL[parsed.options.loglevel:upper()]
   if not log_level then
@@ -56,6 +63,15 @@ if parsed.options.georange then
   geoscanner_range = tonumber(parsed.options.georange)
   if not geoscanner_range then
     error("Geo range must be a number.", 0)
+  end
+end
+
+-- ARGUMENTS
+if parsed.arguments.max_offset then
+  ---@diagnostic disable-next-line max_offset is tested right after this
+  max_offset = tonumber(parsed.arguments.max_offset)
+  if not max_offset then
+    error("Max offset must be a number.", 0)
   end
 end
 
@@ -228,7 +244,14 @@ local function get_closest_ore()
   local closest_distance = math.huge
   for i, block in ipairs(state.state_info.last_scan) do
     local distance = math.abs(block.x - aid.position.x) + math.abs(block.y - aid.position.y) + math.abs(block.z - aid.position.z)
-    if ORE_DICT[block.name] and distance < closest_distance then
+    local out_of_range = false
+    if block.x < -max_offset or block.x > max_offset
+      or block.y < -max_depth
+      or block.z < -max_offset or block.z > max_offset then
+      out_of_range = true
+    end
+
+    if not out_of_range and ORE_DICT[block.name] and distance < closest_distance then
       closest_ore = i
       closest_distance = distance
     end
@@ -240,6 +263,15 @@ end
 local dig_context = logging.create_context("Dig Down")
 local function dig_down()
   dig_context.debug("Digging down.")
+
+  dig_context.debug("Current depth is", aid.position.y)
+  dig_context.debug("Max depth is", max_depth)
+
+  if aid.position.y < -max_depth then
+    dig_context.info("Reached max depth, returning home.")
+    state.state = "returning_home"
+    return
+  end
 
   local success, block_data = turtle.inspectDown()
   if success and block_data.name == "minecraft:bedrock" then
@@ -356,6 +388,7 @@ local function return_home()
   return false
 end
 
+local r_seek_context = logging.create_context("Return from seek")
 local function return_seek()
   local direction, distance = aid.get_direction_to(vector.new(0, state.state_info.depth, 0), false, true)
 
@@ -369,11 +402,39 @@ local function return_seek()
   elseif direction == "down" then -- if this happens then the world is ending
     turtle.digDown()
     aid.go_down()
+  elseif not direction then
+    r_seek_context.warn("Turtle aid is reporting we have already returned to the correct depth, but we are not.")
   else
     aid.face(direction --[[@as cardinal_direction]])
     aid.gravel_protected_dig()
     aid.go_forward()
   end
+end
+
+local dump_context = logging.create_context("Dump Inventory")
+local function dump_inventory()
+  -- First, find and face the chest.
+  while not aid.find_chest() do
+    dump_context.warn("Unable to find chest, waiting 5 seconds.")
+    sleep(5)
+  end
+
+  -- Then, dump the inventory.
+  for i = 1, 16 do
+    if turtle.getItemCount(i) > 0 then
+      turtle.select(i)
+      if do_fuel and turtle.refuel() then
+        dump_context.info("Refueled. Now have", turtle.getFuelLevel(), "fuel.")
+      end
+      turtle.drop()
+    end
+  end
+
+  turtle.select(1) -- ensure the first slot is selected always.
+end
+
+local function check_inventory()
+  return turtle.getItemCount(15) > 0 -- we leave a single slot open in case the turtle comes across a new item while returning home.
 end
 
 -- The turtle cannot know what direction it is facing initially, ask for that.
@@ -386,9 +447,18 @@ aid.facing = _direction == "north" and 0 or _direction == "east" and 1 or _direc
 
 load_state() -- initial load
 
+local main_context = logging.create_context("Main")
 -- Main loop
 local function main()
   local tick_context = logging.create_context("Tick")
+
+  main_context.info("Digging down a block so we don't end up destroying the chest.")
+  turtle.digDown()
+  aid.go_down()
+  main_context.info("Start main loop.")
+
+  turtle.select(1) -- ensure the first slot is selected always.
+
   while true do
     tick_context.debug("Tick. State is:", state.state)
 
@@ -396,8 +466,14 @@ local function main()
       dig_down()
     elseif state.state == "seeking" then
       seek()
+    elseif state.state == "inventory_full" then
+      if return_home() then
+        dump_inventory()
+        state.state = "returning_from_seek"
+      end
     elseif state.state == "returning_home" then
       if return_home() then
+        dump_inventory()
         break
       end
     elseif state.state == "returning_from_seek" then
@@ -406,19 +482,25 @@ local function main()
       error("Invalid state: " .. tostring(state.state), 0)
     end
 
+    if check_inventory() then
+      state.state = "inventory_full"
+    end
+
     save_state() -- save the state at the end of each tick, so we don't need to spam it everywhere
   end
+
+  main_context.info("Reached home. Done.")
 end
 
-local main_context = logging.create_context("Main")
 local ok, err = xpcall(main, debug.traceback)
+
+-- Cleanup before dumping the log, in case the log is large (state file can be upwards of 500kb)
+main_context.debug("Cleaning up...")
+aid.clear_save()
+file_helper.delete(STATE_FILE)
 
 if not ok then
   main_context.fatal(err)
   logging.dump_log(LOG_FILE)
 end
 
--- Cleanup
-main_context.debug("Cleaning up...")
-aid.clear_save()
-file_helper.delete(STATE_FILE)
