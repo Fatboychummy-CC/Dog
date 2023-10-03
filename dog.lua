@@ -23,8 +23,8 @@ local geoscanner_range = 8
 local max_offset = 8
 local scan = nil ---@type fun():table<integer, table> Set during initialization.
 local do_fuel = false
-local version = "V0.10.3"
-local latest_changes = [[Added more checks for bedrock. There are still a few cases I need to check for, but this should fix most of the issues.]]
+local version = "V0.11.0"
+local latest_changes = [[Added a path retracer for when bedrock gets in the way, this should resolve the last of the issues with the turtle getting stuck in bedrock. Disabled state loader for now, as it is not yet ready.]]
 
 local parser = simple_argparse.new_parser("dog", "Dog is a program run on mining turtles which is used to find ores and mine them. Unlike quarry programs, this program digs in a straight line down and uses either plethora's block scanner or advanced peripheral's geoscanner to detect where ores are along its path and mine to them.")
 parser.add_option("depth", "The maximum depth to dig to.", max_depth)
@@ -45,6 +45,7 @@ if parsed.flags.help then
 end
 if parsed.flags.version then
   print(version)
+  print()
   print("Latest update notes:", latest_changes)
   return
 end
@@ -439,49 +440,77 @@ local function seek()
   end
 end
 
-local function return_home()
-  local direction, distance = aid.get_direction_to(vector.new(0, 0, 0), false, true)
+--- Go to specific coordinates, checking if bedrock is in the way.
+--- This method is expected to be used for returning from mining, not for
+--- locating ores. It will trigger a path retrace if bedrock is in the way.
+---@param x integer
+---@param y integer
+---@param z integer
+---@return boolean reached True if the turtle has reached the coordinates, false otherwise.
+---@return boolean retraced True if the turtle had to retrace its path, false otherwise.
+local function goto_safe(x, y, z)
+  local direction, distance = aid.get_direction_to(vector.new(x, y, z), false, true)
 
   if distance == 0 then
-    return true
+    return true, false
   end
 
   if direction == "up" then
+    if inspect_for_bedrock("up") then
+      bedrock_watch.warn("Bedrock hit in return path, triggering path retrace. Ticking will stop momentarily.")
+      aid.retrace(true)
+      return false, true
+    end
     aid.gravel_protected_dig_up()
-    aid.go_up() -- we can use the aid functions here as we no longer need to worry about scanning.
-  elseif direction == "down" then -- if this happens then the world is ending
+    aid.go_up()
+  elseif direction == "down" then
+    if inspect_for_bedrock("down") then
+      bedrock_watch.warn("Bedrock hit in return path, triggering path retrace. Ticking will stop momentarily.")
+      aid.retrace(true)
+      return false, true
+    end
     turtle.digDown()
     aid.go_down()
   else
     aid.face(direction --[[@as cardinal_direction]])
+    if inspect_for_bedrock("forward") then
+      bedrock_watch.warn("Bedrock hit in return path, triggering path retrace. Ticking will stop momentarily.")
+      aid.retrace(true)
+      return false, true
+    end
     aid.gravel_protected_dig()
     aid.go_forward()
   end
 
+  return false, false
+end
+
+--- Return to the surface.
+---@return boolean finished True if the turtle has reached the surface, false otherwise.
+local function return_home()
+  local finished, bedrock = goto_safe(0, 0, 0)
+  if finished then
+    return true
+  end
+
+  if bedrock then
+    bedrock_watch.info("Path retrace complete.")
+  end
   return false
 end
 
 local r_seek_context = logging.create_context("Return from seek")
 local function return_seek()
-  local direction, distance = aid.get_direction_to(vector.new(0, state.state_info.depth, 0), false, true)
-
-  if distance == 0 then
+  local finished, bedrock = goto_safe(0, state.state_info.depth, 0)
+  if finished then
     state.state = "digdown"
+    return true
   end
 
-  if direction == "up" then
-    aid.gravel_protected_dig_up()
-    aid.go_up() -- we can use the aid functions here as we no longer need to worry about scanning.
-  elseif direction == "down" then -- if this happens then the world is ending
-    turtle.digDown()
-    aid.go_down()
-  elseif not direction then
-    r_seek_context.warn("Turtle aid is reporting we have already returned to the correct depth, but we are not.")
-  else
-    aid.face(direction --[[@as cardinal_direction]])
-    aid.gravel_protected_dig()
-    aid.go_forward()
+  if bedrock then
+    bedrock_watch.info("Path retrace complete.")
   end
+  return false
 end
 
 local dump_context = logging.create_context("Dump Inventory")
@@ -527,7 +556,8 @@ repeat
 until _direction == "north" or _direction == "south" or _direction == "east" or _direction == "west"
 aid.facing = _direction == "north" and 0 or _direction == "east" and 1 or _direction == "south" and 2 or 3
 
-load_state() -- initial load
+--load_state() -- initial load
+-- We will reimplement this later, once it's actually ready.
 
 local main_context = logging.create_context("Main")
 -- Main loop
@@ -579,7 +609,8 @@ local function main()
       state.state = "fuel_low"
     end
 
-    save_state() -- save the state at the end of each tick, so we don't need to spam it everywhere
+    --save_state() -- save the state at the end of each tick, so we don't need to spam it everywhere
+    -- we will reimplement this later, once it's actually ready.
   end
 
   main_context.info("Reached home. Done.")
