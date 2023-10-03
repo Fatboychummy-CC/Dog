@@ -105,6 +105,27 @@ local aid = {
     currently_equipped = {}
 }
 
+--- Data about recent moves that have been made.
+local retracer = {
+  max_length = 10, --- The maximum number of movements to store.
+  locked = false, --- If true, the retracer will not accept new movements.
+  ---@type movement[] EXCEPT "done"
+  steps = {},
+}
+
+--- Insert a movement into the retracer. This should check if the max length is
+--- reached, and remove the oldest movement if it is.
+---@param movement movement The movement to insert.
+local function insert_movement(movement)
+  expect(1, movement, "string")
+
+  if retracer.locked then return end
+  table.insert(retracer.steps, movement)
+  if #retracer.steps > retracer.max_length then
+    table.remove(retracer.steps, 1)
+  end
+end
+
 --- Write movement information to the position cache file.
 ---@param movement movement The movement to save.
 local function write_movement(movement)
@@ -480,6 +501,7 @@ function aid.go_forward()
   if success then
     aid.position = aid.position + facings[aid.facing]
     aid.fuel = aid.fuel - 1
+    insert_movement("forward")
   end
 
   write_movement("done")
@@ -495,6 +517,7 @@ function aid.go_back()
   if success then
     aid.position = aid.position - facings[aid.facing]
     aid.fuel = aid.fuel - 1
+    insert_movement("back")
   end
 
   write_movement("done")
@@ -510,6 +533,7 @@ function aid.go_up()
   if success then
     aid.position = aid.position + vector.new(0, 1, 0)
     aid.fuel = aid.fuel - 1
+    insert_movement("up")
   end
 
   write_movement("done")
@@ -525,6 +549,7 @@ function aid.go_down()
   if success then
     aid.position = aid.position + vector.new(0, -1, 0)
     aid.fuel = aid.fuel - 1
+    insert_movement("down")
   end
 
   write_movement("done")
@@ -539,6 +564,7 @@ function aid.turn_left()
 
   if success then
     aid.facing = (aid.facing - 1) % 4
+    insert_movement("left")
   end
 
   write_movement("done")
@@ -553,10 +579,60 @@ function aid.turn_right()
 
   if success then
     aid.facing = (aid.facing + 1) % 4
+    insert_movement("right")
   end
 
   write_movement("done")
   return success
+end
+
+--- Retrace the turtle's path, doing the inverse of each movement other than forward and back (since the turtle turns around).
+---@param allow_digging boolean? If true, the turtle will dig out blocks in the way.
+function aid.retrace(allow_digging)
+  retracer.locked = true
+  -- First, turn around to face the direction we came from.
+  aid.turn_right()
+  aid.turn_right()
+
+  -- Now, retrace the steps. Noting the most recent step is the last one in the table.
+  for i = #retracer.steps, 1, -1 do
+    local movement = retracer.steps[i]
+
+    if movement == "forward" then
+      aid.gravel_protected_dig()
+      aid.go_forward()
+    elseif movement == "back" then
+      while not aid.go_back() do
+        if allow_digging then
+          -- this can lead to an infinite loop if bedrock magically appears
+          -- behind the turtle, but since the chances of bedrock magically appearing
+          -- behind the turtle are minimal, I'm not going to implement a check
+          -- for bedrock here.
+          aid.turn_left()
+          aid.turn_left()
+          aid.gravel_protected_dig()
+          aid.turn_right()
+          aid.turn_right()
+        else
+          error("Cannot retrace path, block in the way.", 0)
+        end
+      end
+    elseif movement == "up" then
+      turtle.digDown()
+      aid.go_down()
+    elseif movement == "down" then
+      aid.gravel_protected_dig_up()
+      aid.go_up()
+    elseif movement == "left" then
+      aid.turn_right()
+    elseif movement == "right" then
+      aid.turn_left()
+    end
+  end
+
+  -- And wipe the retracer.
+  retracer.steps = {}
+  retracer.locked = false
 end
 
 --- Turn to face the specified direction.
