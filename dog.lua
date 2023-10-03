@@ -563,6 +563,7 @@ local main_context = logging.create_context("Main")
 -- Main loop
 local function main()
   local tick_context = logging.create_context("Tick")
+  aid.set_retrace_distance(math.min(16, max_offset * 4))
 
   main_context.info("Digging down a block so we don't end up destroying the chest.")
   turtle.digDown()

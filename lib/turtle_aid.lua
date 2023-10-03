@@ -586,6 +586,14 @@ function aid.turn_right()
   return success
 end
 
+--- Set the maximum distance to retrace.
+---@param distance number The maximum distance to retrace.
+function aid.set_retrace_distance(distance)
+  expect(1, distance, "number")
+
+  retracer.max_length = distance
+end
+
 --- Retrace the turtle's path, doing the inverse of each movement other than forward and back (since the turtle turns around).
 ---@param allow_digging boolean? If true, the turtle will dig out blocks in the way.
 function aid.retrace(allow_digging)
