@@ -23,13 +23,16 @@ local geoscanner_range = 8
 local max_offset = 8
 local scan = nil ---@type fun():table<integer, table> Set during initialization.
 local do_fuel = false
-local version = "V0.11.0"
-local latest_changes = [[Added a path retracer for when bedrock gets in the way, this should resolve the last of the issues with the turtle getting stuck in bedrock. Disabled state loader for now, as it is not yet ready.]]
+local version = "V0.12.0"
+local latest_changes = [[Added 'exclude', 'include', and 'only' options. These options allow you to specify ores/blocks to include, exclude, or be marked as the only blocks to be mined.]]
 
 local parser = simple_argparse.new_parser("dog", "Dog is a program run on mining turtles which is used to find ores and mine them. Unlike quarry programs, this program digs in a straight line down and uses either plethora's block scanner or advanced peripheral's geoscanner to detect where ores are along its path and mine to them.")
 parser.add_option("depth", "The maximum depth to dig to.", max_depth)
 parser.add_option("loglevel", "The log level to use.", "INFO")
 parser.add_option("georange", "The range to use for the geoscanner, if using Advanced Peripherals.", geoscanner_range)
+parser.add_option("exclude", "A file (lua table) containing ores to exclude from mining.")
+parser.add_option("include", "A file (lua table) containing blocks to include in mining.")
+parser.add_option("only", "A file (lua table) containing blocks that should be the only ones mined.")
 parser.add_flag("h", "help", "Show this help message and exit.")
 parser.add_flag("f", "fuel", "Attempt to refuel as needed from ores mined.")
 parser.add_flag("v", "version", "Show version information and exit.")
@@ -74,6 +77,7 @@ if parsed.options.georange then
     error("Geo range must be a number.", 0)
   end
 end
+-- Ore exclusion, inclusion, only options are parsed after ORE_DICT is defined.
 
 -- ARGUMENTS
 if parsed.arguments.max_offset then
@@ -244,6 +248,67 @@ local ORE_DICT = {
   ["thermal:nickel_ore"] = true,
   ["thermal:deepslate_nickel_ore"] = true,
 }
+if parsed.options.exclude then
+  if file_helper.exists(parsed.options.exclude) then
+    local exclude = file_helper.unserialize(parsed.options.exclude)
+    if type(exclude) == "table" then
+      -- it's possible to do both `{["minecraft:ore"] = true}` and `{"minecraft:ore"}`, so we need to check for both.
+      for key, value in pairs(exclude) do
+        if type(key) == "string" then
+          ORE_DICT[key] = nil
+        end
+        if type(value) == "string" then
+          ORE_DICT[value] = nil
+        end
+      end
+    else
+      error("Failed to parse exclude file.", 0)
+    end
+  else
+    error("Exclude file does not exist.", 0)
+  end
+end
+if parsed.options.include then
+  if file_helper.exists(parsed.options.include) then
+    local include = file_helper.unserialize(parsed.options.include)
+    if type(include) == "table" then
+      -- it's possible to do both `{["minecraft:ore"] = true}` and `{"minecraft:ore"}`, so we need to check for both.
+      for key, value in pairs(include) do
+        if type(key) == "string" then
+          ORE_DICT[key] = true
+        end
+        if type(value) == "string" then
+          ORE_DICT[value] = true
+        end
+      end
+    else
+      error("Failed to parse include file.", 0)
+    end
+  else
+    error("Include file does not exist.", 0)
+  end
+end
+if parsed.options.only then
+  if file_helper.exists(parsed.options.only) then
+    local only = file_helper.unserialize(parsed.options.only)
+    if type(only) == "table" then
+      ORE_DICT = {} -- reset the ore dictionary, we're only mining what's in the only file.
+      -- it's possible to do both `{["minecraft:ore"] = true}` and `{"minecraft:ore"}`, so we need to check for both.
+      for key, value in pairs(ORE_DICT) do
+        if type(key) == "string" then
+          ORE_DICT[key] = true
+        end
+        if type(value) == "string" then
+          ORE_DICT[value] = true
+        end
+      end
+    else
+      error("Failed to parse only file.", 0)
+    end
+  else
+    error("Only file does not exist.", 0)
+  end
+end
 
 local state = {
   state = "digdown",
