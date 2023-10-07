@@ -23,8 +23,9 @@ local geoscanner_range = 8
 local max_offset = 8
 local scan = nil ---@type fun():table<integer, table> Set during initialization.
 local do_fuel = false
-local version = "V0.12.1"
-local latest_changes = [[Added 'exclude', 'include', and 'only' options. These options allow you to specify ores/blocks to include, exclude, or be marked as the only blocks to be mined.]]
+local horizontal = false
+local version = "V0.13.0"
+local latest_changes = [[Added 'exclude', 'include', 'only' options; and 'level' flag. Run dog with the help flag to read more.]]
 
 local parser = simple_argparse.new_parser("dog", "Dog is a program run on mining turtles which is used to find ores and mine them. Unlike quarry programs, this program digs in a straight line down and uses either plethora's block scanner or advanced peripheral's geoscanner to detect where ores are along its path and mine to them.")
 parser.add_option("depth", "The maximum depth to dig to.", max_depth)
@@ -36,6 +37,7 @@ parser.add_option("only", "A file (lua table) containing blocks that should be t
 parser.add_flag("h", "help", "Show this help message and exit.")
 parser.add_flag("f", "fuel", "Attempt to refuel as needed from ores mined.")
 parser.add_flag("v", "version", "Show version information and exit.")
+parser.add_flag("l", "level", "Travel in a horizontal line at the current level. Useful for mining sand and other surface ores when used in tandem with include or only.")
 parser.add_argument("max_offset", "The maximum offset from the centerpoint to mine to.", false,  max_offset)
 
 local parsed = parser.parse(table.pack(...))
@@ -54,6 +56,9 @@ if parsed.flags.version then
 end
 if parsed.flags.fuel then
   do_fuel = true
+end
+if parsed.flags.level then
+  horizontal = true
 end
 
 -- OPTIONS
@@ -346,9 +351,12 @@ local function load_state()
   end
 end
 
+local ore_context = logging.create_context("Ore")
+
 --- Get the closest ore to the turtle.
 ---@return integer? closest_ore_index The index of the closest ore in the last scan, or nil if no ores were found in the scan.
-local function get_closest_ore()
+---@param initial_facing turtle_facing? The direction the turtle was facing when it started digging.
+local function get_closest_ore(initial_facing)
   -- Since we now offset the last scan, we will need to calculate based on the
   -- position of the turtle as well.
   local closest_ore
@@ -357,12 +365,25 @@ local function get_closest_ore()
   for i, block in ipairs(state.state_info.last_scan) do
     local distance = math.abs(block.x - aid.position.x) + math.abs(block.y - aid.position.y) + math.abs(block.z - aid.position.z)
     local out_of_range = false
-    if block.x < -max_offset or block.x > max_offset
-      or block.y < -max_depth
-      or block.z < -max_offset or block.z > max_offset then
-      out_of_range = true
+    if initial_facing then
+      -- ore_context.debug("Testing ore with name", block.name, "at", block.x, block.y, block.z, "with distance", distance)
+      local initial_axis = (initial_facing == 0 or initial_facing == 2) and "z" or "x"
+      local opposite_axis = initial_axis == "z" and "x" or "z"
+      out_of_range = block.y < -max_offset or block.y > max_offset or block[opposite_axis] > max_offset or block[opposite_axis] < -max_offset
+        or block[initial_axis] < -max_depth or block[initial_axis] > max_depth
+
+      --[[
+      ore_context.debug("  Initial axis is", initial_axis, "and opposite axis is", opposite_axis)
+      ore_context.debug("  Initial facing is", initial_facing)
+      ore_context.debug("  Out of range is", out_of_range)
+      ore_context.debug(" ", block.y < -max_offset , block.y > max_offset , block[opposite_axis] > max_offset , block[opposite_axis] < -max_offset
+      , block[initial_axis] < -max_depth , block[initial_axis] > max_depth)
+      ]]
+    else
+      out_of_range = block.y < -max_depth or block.x < -max_offset or block.x > max_offset or block.z < -max_offset or block.z > max_offset
     end
 
+    -- ore_context.debug("Exists in ore dict?", ORE_DICT[block.name] and "yes" or "no")
     if not out_of_range and ORE_DICT[block.name] and distance < closest_distance then
       closest_ore = i
       closest_distance = distance
@@ -372,7 +393,55 @@ local function get_closest_ore()
   return closest_ore
 end
 
-local dig_context = logging.create_context("Dig Down")
+local dig_context = logging.create_context("Dig")
+
+--- Dig forward, scanning for ores as we go. Used in place of dig_down when level flag is set.
+---@param initial_facing turtle_facing The direction the turtle was facing when it started digging.
+local function dig_forward(initial_facing)
+  dig_context.debug("Digging forward.")
+
+  -- max_depth will now be the maximum distance forward we can go, so we need to determine
+  -- which way is "forward" and how far we are along that axis.
+  local forward_axis
+  if initial_facing == 0 or initial_facing == 2 then
+    forward_axis = "z"
+  else
+    forward_axis = "x"
+  end
+
+  dig_context.debug("Current depth is", math.abs(aid.position[forward_axis]))
+  dig_context.debug("Max depth is", max_depth)
+
+  if math.abs(aid.position[forward_axis]) > max_depth then
+    dig_context.info("Reached max depth, returning home.")
+    state.state = "returning_home"
+    return
+  end
+
+  local scanned = scan()
+  if type(scanned) == "table" then
+    -- Scan was a success, sort through it for the first ore (if there is one).
+    state.state_info.last_scan = strip_and_offset_scan(scanned)
+  end
+
+  local ore = get_closest_ore(initial_facing)
+
+  -- if we found an ore, we want to seek it.
+  if ore then
+    state.state_info.ore = ore
+    state.state = "seeking"
+    return
+  end
+
+  -- if not, go forward.
+  -- Also, ensure we are facing the correct direction.
+  aid.face(initial_facing)
+  turtle.dig()
+  aid.go_forward()
+  state.state_info.depth = aid.position[forward_axis] -- """depth""" is now the distance we've gone forward.
+end
+
+--- Dig down, scanning for ores as we go.
 local function dig_down()
   dig_context.debug("Digging down.")
 
@@ -441,7 +510,7 @@ local function inspect_for_bedrock(direction)
 end
 
 local seek_context = logging.create_context("Seek")
-local function seek()
+local function seek(initial_facing)
   local ore = state.state_info.last_scan[state.state_info.ore]
   local x, y, z = ore.x, ore.y, ore.z
   local direction, distance = aid.get_direction_to(vector.new(x, y, z), true)
@@ -469,7 +538,7 @@ local function seek()
       state.state_info.last_scan = strip_and_offset_scan(scanned)
     end
 
-    local new_ore = get_closest_ore()
+    local new_ore = get_closest_ore(initial_facing)
 
     if new_ore then
       seek_context.info("Found another ore, seeking to it.")
@@ -565,8 +634,18 @@ local function return_home()
 end
 
 local r_seek_context = logging.create_context("Return from seek")
-local function return_seek()
-  local finished, bedrock = goto_safe(0, state.state_info.depth, 0)
+local function return_seek(initial_facing)
+  local finished, bedrock
+  if horizontal then
+    local initial_axis = (initial_facing == 0 or initial_facing == 2) and "z" or "x"
+    if initial_axis == "z" then
+      finished, bedrock = goto_safe(0, 0, state.state_info.depth)
+    else
+      finished, bedrock = goto_safe(state.state_info.depth, 0, 0)
+    end
+  else
+    finished, bedrock = goto_safe(0, state.state_info.depth, 0)
+  end
   if finished then
     state.state = "digdown"
     return true
@@ -613,7 +692,11 @@ local function check_fuel()
   return turtle.getFuelLevel() < (math.abs(aid.position.y) + math.abs(aid.position.z) + math.abs(aid.position.x) + 50)
 end
 
+local main_context = logging.create_context("Main")
 -- The turtle cannot know what direction it is facing initially, ask for that.
+if horizontal and not parsed.options.depth then
+  main_context.warn(("Turtle is set to move horizontally, but no max depth was specified. The turtle will go %d blocks forward! If this is okay, enter the direction as normal, otherwise terminate now!"):format(max_depth))
+end
 print("What direction is the turtle facing (north, south, east, west)? You can use the F3 menu to determine this.")
 local _direction
 repeat
@@ -624,26 +707,36 @@ aid.facing = _direction == "north" and 0 or _direction == "east" and 1 or _direc
 --load_state() -- initial load
 -- We will reimplement this later, once it's actually ready.
 
-local main_context = logging.create_context("Main")
 -- Main loop
 local function main()
   local tick_context = logging.create_context("Tick")
   aid.set_retrace_distance(math.min(16, max_offset * 4))
 
-  main_context.info("Digging down a block so we don't end up destroying the chest.")
-  turtle.digDown()
-  aid.go_down()
+  main_context.info("Digging down or forward a block so we don't end up destroying the chest.")
+  if horizontal then
+    turtle.dig()
+    aid.go_forward()
+  else
+    turtle.digDown()
+    aid.go_down()
+  end
   main_context.info("Start main loop.")
 
   turtle.select(1) -- ensure the first slot is selected always.
+
+  local initial_facing = aid.facing
 
   while true do
     tick_context.debug("Tick. State is:", state.state)
 
     if state.state == "digdown" then
-      dig_down()
+      if horizontal then
+        dig_forward(initial_facing)
+      else
+        dig_down()
+      end
     elseif state.state == "seeking" then
-      seek()
+      seek(initial_facing)
     elseif state.state == "fuel_low" then
       if return_home() then
         dump_inventory()
@@ -661,7 +754,7 @@ local function main()
         break
       end
     elseif state.state == "returning_from_seek" then
-      return_seek()
+      return_seek(initial_facing)
     else
       error("Invalid state: " .. tostring(state.state), 0)
     end
@@ -692,5 +785,19 @@ file_helper.delete(STATE_FILE)
 if not ok then
   main_context.fatal(err)
   logging.dump_log(LOG_FILE)
+
+  -- Attempt to return home to protect the turtle from becoming lost underground.
+  pcall(function()
+    main_context.warn("Attempting to return home!")
+
+    local x = 0
+    repeat
+      x = x + 1
+      if x > 300 then -- 300 chosen arbitrarily. This may or may not be a good value.
+        main_context.fatal("Unable to return home, aborting.")
+        break
+      end
+    until return_home()
+  end)
 end
 
