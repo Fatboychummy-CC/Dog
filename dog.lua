@@ -23,7 +23,7 @@ local geoscanner_range = 8
 local max_offset = 8
 local scan = nil ---@type fun():table<integer, table> Set during initialization.
 local do_fuel = false
-local version = "V0.12.0"
+local version = "V0.12.1"
 local latest_changes = [[Added 'exclude', 'include', and 'only' options. These options allow you to specify ores/blocks to include, exclude, or be marked as the only blocks to be mined.]]
 
 local parser = simple_argparse.new_parser("dog", "Dog is a program run on mining turtles which is used to find ores and mine them. Unlike quarry programs, this program digs in a straight line down and uses either plethora's block scanner or advanced peripheral's geoscanner to detect where ores are along its path and mine to them.")
@@ -294,7 +294,7 @@ if parsed.options.only then
     if type(only) == "table" then
       ORE_DICT = {} -- reset the ore dictionary, we're only mining what's in the only file.
       -- it's possible to do both `{["minecraft:ore"] = true}` and `{"minecraft:ore"}`, so we need to check for both.
-      for key, value in pairs(ORE_DICT) do
+      for key, value in pairs(only) do
         if type(key) == "string" then
           ORE_DICT[key] = true
         end
