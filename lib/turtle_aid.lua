@@ -4,10 +4,10 @@ local expect = require "cc.expect".expect
 local file_helper = require "lib.file_helper"
 
 ---@alias turtle_facing
----| `0` # North (negative Z direction)
----| `1` # East (positive X direction)
----| `2` # South (positive Z direction)
----| `3` # West (negative X direction)
+---| 0 # North (negative Z direction)
+---| 1 # East (positive X direction)
+---| 2 # South (positive Z direction)
+---| 3 # West (negative X direction)
 
 ---@alias movement
 ---| "forward"
