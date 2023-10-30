@@ -13,7 +13,7 @@ local program_name = "Dog"
 
 local RAW_URL = "https://raw.githubusercontent.com/Fatboychummy-CC/Libraries/main/"
 local PASTE_URL = "https://pastebin.com/raw/"
-local p_dir = ... or fs.getDir(shell.getRunningProgram())
+local p_dir = ... or shell.dir()
 
 local function download_file(url, filename)
   print("Downloading", filename)
