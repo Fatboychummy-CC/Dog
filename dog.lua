@@ -337,6 +337,15 @@ local function strip_and_offset_scan(data)
   return stripped
 end
 
+--- Scan for ores, strip and offset the scan, then set the last scan in state_info to the result.
+local function scan_ores()
+  local scanned = scan()
+  if type(scanned) == "table" then
+    -- Scan was a success, sort through it for the first ore (if there is one).
+    state.state_info.last_scan = strip_and_offset_scan(scanned)
+  end
+end
+
 local function save_state()
   file_helper.serialize(STATE_FILE, state, true)
 end
@@ -412,17 +421,13 @@ local function dig_forward(initial_facing)
   dig_context.debug("Current depth is", math.abs(aid.position[forward_axis]))
   dig_context.debug("Max depth is", max_depth)
 
-  if math.abs(aid.position[forward_axis]) > max_depth then
+  if math.abs(aid.position[forward_axis]) >= max_depth then
     dig_context.info("Reached max depth, returning home.")
     state.state = "returning_home"
     return
   end
 
-  local scanned = scan()
-  if type(scanned) == "table" then
-    -- Scan was a success, sort through it for the first ore (if there is one).
-    state.state_info.last_scan = strip_and_offset_scan(scanned)
-  end
+  scan_ores()
 
   local ore = get_closest_ore(initial_facing)
 
@@ -461,11 +466,7 @@ local function dig_down()
     return
   end
 
-  local scanned = scan()
-  if type(scanned) == "table" then
-    -- Scan was a success, sort through it for the first ore (if there is one).
-    state.state_info.last_scan = strip_and_offset_scan(scanned)
-  end
+  scan_ores()
 
   local ore = get_closest_ore()
 
@@ -531,12 +532,7 @@ local function seek(initial_facing)
     table.remove(state.state_info.last_scan, state.state_info.ore) -- remove the ore from the scan
 
     seek_context.info("Ore mined, rescanning for more ores.")
-    -- rescan for ores
-    local scanned = scan()
-    if type(scanned) == "table" then
-      -- Scan was a success, sort through it for the first ore (if there is one).
-      state.state_info.last_scan = strip_and_offset_scan(scanned)
-    end
+    scan_ores()
 
     local new_ore = get_closest_ore(initial_facing)
 
@@ -783,6 +779,7 @@ aid.clear_save()
 file_helper.delete(STATE_FILE)
 
 if not ok then
+  sleep() -- in case this was an infinite loop related error.
   main_context.fatal(err)
   logging.dump_log(LOG_FILE)
 
