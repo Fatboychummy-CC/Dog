@@ -76,14 +76,14 @@ if parsed.options.loglevel then
   end
 end
 if parsed.options.depth then
-  ---@diagnostic disable-next-line max_depth is tested right after this
+  ---@diagnostic disable-next-line: cast-local-type max_depth is tested right after this
   max_depth = tonumber(parsed.options.depth)
   if not max_depth then
     error("Max depth must be a number.", 0)
   end
 end
 if parsed.options.georange then
-  ---@diagnostic disable-next-line geoscanner_range is tested right after this
+  ---@diagnostic disable-next-line: cast-local-type geoscanner_range is tested right after this
   geoscanner_range = tonumber(parsed.options.georange)
   if not geoscanner_range then
     error("Geo range must be a number.", 0)
@@ -92,9 +92,9 @@ end
 -- Ore exclusion, inclusion, only options are parsed after ORE_DICT is defined.
 
 -- ARGUMENTS
-if parsed.arguments.max_offset then
-  ---@diagnostic disable-next-line max_offset is tested right after this
-  max_offset = tonumber(parsed.arguments.max_offset)
+if parsed.arguments[1] then
+  ---@diagnostic disable-next-line: cast-local-type max_offset is tested right after this
+  max_offset = tonumber(parsed.arguments[1])
   if not max_offset then
     error("Max offset must be a number.", 0)
   end
@@ -379,14 +379,20 @@ local function get_closest_ore(initial_facing)
 
   local closest_distance = math.huge
   for i, block in ipairs(state.state_info.last_scan) do
+    local absolute = {
+      x = block.x + aid.position.x,
+      y = block.y + aid.position.y,
+      z = block.z + aid.position.z
+    }
     local distance = math.abs(block.x - aid.position.x) + math.abs(block.y - aid.position.y) + math.abs(block.z - aid.position.z)
     local out_of_range = false
-    if initial_facing then
+    if horizontal then
       -- ore_context.debug("Testing ore with name", block.name, "at", block.x, block.y, block.z, "with distance", distance)
       local initial_axis = (initial_facing == 0 or initial_facing == 2) and "z" or "x"
       local opposite_axis = initial_axis == "z" and "x" or "z"
-      out_of_range = block.y < -max_offset or block.y > max_offset or block[opposite_axis] > max_offset or block[opposite_axis] < -max_offset
-        or block[initial_axis] < -max_depth or block[initial_axis] > max_depth
+      out_of_range = absolute.y < -max_offset or absolute.y > max_offset
+        or absolute[opposite_axis] > max_offset or absolute[opposite_axis] < -max_offset
+        or absolute[initial_axis] < -max_depth or absolute[initial_axis] > max_depth
 
       --[[
       ore_context.debug("  Initial axis is", initial_axis, "and opposite axis is", opposite_axis)
@@ -396,7 +402,10 @@ local function get_closest_ore(initial_facing)
       , block[initial_axis] < -max_depth , block[initial_axis] > max_depth)
       ]]
     else
-      out_of_range = block.y < -max_depth or block.x < -max_offset or block.x > max_offset or block.z < -max_offset or block.z > max_offset
+
+      out_of_range = absolute.y < -max_depth
+        or absolute.x < -max_offset or absolute.x > max_offset
+        or absolute.z < -max_offset or absolute.z > max_offset
     end
 
     -- ore_context.debug("Exists in ore dict?", ORE_DICT[block.name] and "yes" or "no")
