@@ -785,7 +785,7 @@ if not ok then
 
   -- Attempt to return home to protect the turtle from becoming lost underground.
   pcall(function()
-    main_context.warn("Attempting to return home!")
+    main_context.warn("Threw error! Attempting to return home!")
 
     local x = 0
     repeat
