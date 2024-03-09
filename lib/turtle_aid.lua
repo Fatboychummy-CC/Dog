@@ -559,12 +559,9 @@ end
 ---@return boolean success
 function aid.turn_left()
   write_movement("left") -- turns are to be assumed successful on reboot
+  insert_movement("left")
+  aid.facing = (aid.facing - 1) % 4 -- again, turns are to be assumed successful
   local success = turtle.turnLeft()
-
-  if success then
-    aid.facing = (aid.facing - 1) % 4
-    insert_movement("left")
-  end
 
   write_movement("done")
   return success
@@ -574,12 +571,9 @@ end
 ---@return boolean success
 function aid.turn_right()
   write_movement("right") -- turns are to be assumed successful on reboot
+  insert_movement("right")
+  aid.facing = (aid.facing + 1) % 4 -- again, turns are to be assumed successful
   local success = turtle.turnRight()
-
-  if success then
-    aid.facing = (aid.facing + 1) % 4
-    insert_movement("right")
-  end
 
   write_movement("done")
   return success
