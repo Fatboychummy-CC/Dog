@@ -7,7 +7,7 @@ local expect = require "cc.expect".expect
 
 -- Import libraries
 local aid = require("lib.turtle_aid")
-local file_helper = require("lib.file_helper")
+local file_helper = require("lib.file_helper"):instanced("")
 local logging = require("lib.logging")
 local simple_argparse = require("lib.simple_argparse")
 
@@ -254,8 +254,8 @@ local ORE_DICT = {
   ["thermal:deepslate_nickel_ore"] = true,
 }
 if parsed.options.exclude then
-  if file_helper.exists(parsed.options.exclude) then
-    local exclude = file_helper.unserialize(parsed.options.exclude)
+  if file_helper:exists(parsed.options.exclude) then
+    local exclude = file_helper:unserialize(parsed.options.exclude)
     if type(exclude) == "table" then
       -- it's possible to do both `{["minecraft:ore"] = true}` and `{"minecraft:ore"}`, so we need to check for both.
       for key, value in pairs(exclude) do
@@ -274,8 +274,8 @@ if parsed.options.exclude then
   end
 end
 if parsed.options.include then
-  if file_helper.exists(parsed.options.include) then
-    local include = file_helper.unserialize(parsed.options.include)
+  if file_helper:exists(parsed.options.include) then
+    local include = file_helper:unserialize(parsed.options.include)
     if type(include) == "table" then
       -- it's possible to do both `{["minecraft:ore"] = true}` and `{"minecraft:ore"}`, so we need to check for both.
       for key, value in pairs(include) do
@@ -294,8 +294,8 @@ if parsed.options.include then
   end
 end
 if parsed.options.only then
-  if file_helper.exists(parsed.options.only) then
-    local only = file_helper.unserialize(parsed.options.only)
+  if file_helper:exists(parsed.options.only) then
+    local only = file_helper:unserialize(parsed.options.only)
     if type(only) == "table" then
       ORE_DICT = {} -- reset the ore dictionary, we're only mining what's in the only file.
       -- it's possible to do both `{["minecraft:ore"] = true}` and `{"minecraft:ore"}`, so we need to check for both.
@@ -347,11 +347,11 @@ local function scan_ores()
 end
 
 local function save_state()
-  file_helper.serialize(STATE_FILE, state, true)
+  file_helper:serialize(STATE_FILE, state, true)
 end
 
 local function load_state()
-  local loaded_state = file_helper.unserialize(STATE_FILE ,{
+  local loaded_state = file_helper:unserialize(STATE_FILE ,{
     state = "digdown",
     state_info = {}
   })
@@ -776,7 +776,7 @@ local ok, err = xpcall(main, debug.traceback)
 -- Cleanup before dumping the log, in case the log is large (state file can be upwards of 500kb)
 main_context.debug("Cleaning up...")
 aid.clear_save()
-file_helper.delete(STATE_FILE)
+file_helper:delete(STATE_FILE)
 
 if not ok then
   sleep() -- in case this was an infinite loop related error.
