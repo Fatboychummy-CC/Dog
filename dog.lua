@@ -14,7 +14,7 @@ local logging = require("lib.logging")
 local simple_argparse = require("lib.simple_argparse")
 
 -- Constants
-local LOG_FILE = fs.combine(data_folder.working_directory, "dog.log") -- Logger does not use file_helper, so we need to manually tell it to use this directory.
+local LOG_FILE = fs.combine(data_folder.working_directory, ("dog%d.log"):format(math.random(0, 100000))) -- Logger does not use file_helper, so we need to manually tell it to use this directory.
 local STATE_FILE = "dog.state"
 
 -- Variables
@@ -896,6 +896,7 @@ if not ok then
   sleep() -- in case this was an infinite loop related error.
   main_context.fatal(err)
   logging.dump_log(LOG_FILE)
+  main_context.info("Dumped log as", LOG_FILE)
 
   state.state = "errored"
 
