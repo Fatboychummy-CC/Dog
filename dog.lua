@@ -748,11 +748,11 @@ aid.facing = _direction == "north" and 0 or _direction == "east" and 1 or _direc
 
 local function draw_data()
   -- Draw data to data_win
+  data_win.setBackgroundColor(colors.gray)
   data_win.clear()
   data_win.setCursorPos(1, 1)
 
   -- horizontal gray line
-  data_win.setBackgroundColor(colors.gray)
   data_win.setTextColor(colors.white)
   data_win.write(string.rep('\x8c', math.ceil(tx / 2) - 3) .. " DATA " .. string.rep('\x8c', math.ceil(tx / 2) - 3))
 
