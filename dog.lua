@@ -697,10 +697,10 @@ local function distance_to_home()
 end
 
 --- Check that the turtle's fuel level isn't too low. Fuel is considered "too low"
---- if distance to the surface + 50 is greater than the fuel level.
+--- if distance to the surface + 10 is greater than the fuel level.
 ---@return boolean low True if the fuel level is low, false otherwise.
 local function check_fuel()
-  return turtle.getFuelLevel() < (distance_to_home() + 50)
+  return turtle.getFuelLevel() < (distance_to_home() + 10)
 end
 
 local main_context = logging.create_context("Main")
