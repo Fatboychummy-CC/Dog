@@ -27,6 +27,7 @@ local file_helper = require "file_helper"
 ---| "return_done" # Return home (finished)
 ---| "return_fuel" # Return home (low fuel)
 ---| "return_inv" # Return home (inventory full)
+---| "return_mine" # Return to the last depth (0, depth, 0)
 ---| "done" # Finished mining, stop.
 
 local ORE_DICT = {
@@ -63,8 +64,11 @@ local ore_cache = QIT()
 ---@type integer
 local last_depth = 0
 
----@type state_info
-local state = { state = "start", data = {} }
+---@type QIT<action>
+local action_queue = QIT()
+
+---@type miner_state
+local state = "start"
 
 ---@type string
 local arg1 = ...
@@ -234,12 +238,17 @@ local function scan()
   return scan_data
 end
 
+local last_desired_pos = vector.new(0, 0, 0)
 --- Dig to a specified position.
 ---@param x integer The X position.
 ---@param y integer The Y position.
 ---@param z integer The Z position.
----@return action action
+---@return action? action
 local function dig_to(x, y, z)
+  x = x or last_desired_pos.x
+  y = y or last_desired_pos.y
+  z = z or last_desired_pos.z
+
   -- Align X axis
   if turtle_aid.position.x > x then
     -- X > wanted, face -X
@@ -287,37 +296,27 @@ local function dig_to(x, y, z)
     end
   end
 
-  --- This should never happen, but this means we're at the desired position.
-  return function()
-    ---@diagnostic disable-next-line go_to state requires next state.
-    state.state = state.data.next
-  end
+  -- No return at the end of this, if we reached it, return nil to signal
+  -- move on to next state.
 end
 
---- Mine to the edge of an ore given the specified position.
----@param x integer The X position of the ore.
----@param y integer The Y position of the ore.
----@param z integer The Z position of the ore.
-local function mine_to_ore(x, y, z)
-  local info = get_side_of_ore(x, y, z)
-  dig_to(info.pos.x, info.pos.y, info.pos.z)
+local function scan_base()
+  scan()
 end
 
---- Return to the turtle's home location (0,0,0)
----@return action
-local function return_home()
-  return dig_to(0, 0, 0)
-end
-
-local function mine_tick()
+--- Dig to the side of an ore, then mine the ore on that layer.
+---@param pos vector
+local function dig_action(pos)
 
 end
 
----@type action
-local function at_home()
-  if state.state == "start" then
-    turtle_aid.dump_inventory(turtle_aid.base_excluded_items())
-    state.state = "scan"
+local function scan_action()
+  scan_base()
+
+  if ore_cache.n > 0 then
+    state = "dig_ore"
+    sort_ore_cache()
+    action_queue:Insert(dig_action(ore_cache[1]))
   end
 end
 
@@ -325,32 +324,41 @@ end
 local function mine_action()
   turtle.digDown()
   turtle_aid.go_down()
+  action_queue:Insert(scan_action)
+  -- a new mine action will be inserted by basic_action, unless scan action finds ores.
 end
 
---- Get the next action to run.
----@return action? action The action to run, no action if the program is complete.
-local function get_next_action()
-  if state.state == "start" then
-    return at_home
-  elseif state.state == "mine" then
-    return mine_action
-  elseif state.state == "go_to" then
-    return dig_to(state.data.x, state.data.y, state.data.z)
-  elseif state.state == "scan" then
-    return function()
-      scan()
+--- The basic action, starts things off and loads other actions to be run.
+---@return action?
+local function basic_action()
+  if state == "start" then
+    state = "mine"
+  elseif state == "scan" then
+    action_queue:Insert(scan_base)
+    state = "return_mine"
+  elseif state == "go_to" then
 
-      if ore_cache.n > 0 then
-        sort_ore_cache()
-        state.state = "go_to"
-        state.data = { get_side_of_ore(ore_cache[1].x, ore_cache[1].y, ore_cache[1].z) }
-        state.data.next = { state = "dig_ore" }
-      end
-    end
+  elseif state == "dig_ore" then
+
+  elseif state == "mine" then
+    action_queue:Insert(mine_action)
+  elseif state == "return_done" then
+
+  elseif state == "return_fuel" then
+
+  elseif state == "return_inv" then
+
+  elseif state == "return_mine" then
+    state = "go_to"
+    action_queue:Insert(dig_to(0, last_depth, 0))
+  elseif state == "done" then
+    return
   end
 end
 
-
+local function get_next_action()
+  return action_queue:Drop()
+end
 
 --- Main action loop:
 ---
@@ -361,13 +369,22 @@ end
 --- 5. When no more ores remain in the ore cache, return to the last position we were digging down from.
 --- 6. Go to #1
 local function action_loop()
+  action_queue:Insert(basic_action())
   while true do
     local action = get_next_action()
 
     if action then
+      -- If there's an action, execute it.
       action()
     else
-      return
+      -- If there's no action, get a basic action.
+      local secondary = basic_action()
+      if secondary then
+        secondary()
+      else
+        -- If no basic action, that means we've finished our job.
+        return
+      end
     end
   end
 end
@@ -384,22 +401,12 @@ local function main()
   end
 
   if turtle_aid.is_at(0, 0, 0) then
-    at_home()
+    
   end
 
-  if state.state ~= "return_done" and state.state ~= "done" then
-    action_loop()
-  end
+  action_loop()
 
-  if state.state ~= "done" then
-    state.state = "return_done"
-    state.data = {}
-    return_home()
-    state.state = "done"
-    state.data = {}
-  end
 
-  at_home()
   remove_startup()
 end
 
