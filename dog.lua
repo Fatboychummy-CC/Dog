@@ -695,11 +695,42 @@ local main_context = logging.create_context("Main")
 if horizontal and not parsed.options.depth then
   main_context.warn(("Turtle is set to move horizontally, but no max depth was specified. The turtle will go %d blocks forward! If this is okay, enter the direction as normal, otherwise terminate now!"):format(max_depth))
 end
-print("What direction is the turtle facing (north, south, east, west)? You can use the F3 menu to determine this.")
+
 local _direction
+local function ask_direction()
+  print("What direction is the turtle facing (north, south, east, west)? You can use the F3 menu to determine this.")
 repeat
   _direction = read()
 until _direction == "north" or _direction == "south" or _direction == "east" or _direction == "west"
+end
+
+if aid.is_module_equipped("scanner") then
+  main_context.info("Using Plethora scanner, we should be able to determine our own facing.")
+  local blocks = scan()
+
+  if type(blocks) == "table" then
+    for _, v in ipairs(blocks) do
+      if v.x == 0 and v.z == 0 and v.y == 0 then
+        if v.state and v.state.facing then
+          _direction = v.state.facing
+          main_context.info("Found facing in scanner data, facing is", _direction)
+          break
+        else
+          main_context.warn("No facing found in scanner data, unable to determine facing.")
+          ask_direction()
+          break
+        end
+      end
+    end
+  else
+    main_context.warn("No scanner data returned, unable to determine facing.")
+    ask_direction()
+  end
+else
+  main_context.warn("No scanner found, unable to determine facing.")
+  ask_direction()
+end
+
 aid.facing = _direction == "north" and 0 or _direction == "east" and 1 or _direction == "south" and 2 or 3
 
 --load_state() -- initial load
