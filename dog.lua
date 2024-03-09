@@ -18,9 +18,12 @@ local LOG_FILE = fs.combine(data_folder.working_directory, "dog.log") -- Logger 
 local STATE_FILE = "dog.state"
 
 -- Variables
+local main_win = term.current()
 local max_depth = 512
 local log_level = logging.LOG_LEVEL.INFO
-local log_window = term.current()
+local tx, ty = term.getSize()
+local log_win = window.create(window.create(main_win, 1, 1, tx, 7), 1, 1, tx, 8) -- overlap the height by one so we can print to the bottom of the window.
+local data_win = window.create(main_win, 1, 8, tx, ty - 7)
 local geoscanner_range = 8
 local max_offset = 8
 local scan = nil ---@type fun():table<integer, table> Set during initialization.
@@ -43,6 +46,8 @@ parser.add_flag("l", "level", "Travel in a horizontal line at the current level.
 parser.add_argument("max_offset", "The maximum offset from the centerpoint to mine to.", false,  max_offset)
 
 local parsed = parser.parse(table.pack(...))
+
+term.setCursorPos(1, 3)
 
 -- FLAGS
 if parsed.flags.help then
@@ -96,7 +101,7 @@ if parsed.arguments.max_offset then
 end
 
 logging.set_level(log_level)
-logging.set_window(log_window)
+logging.set_window(log_win)
 
 -- Initial setup
 do
@@ -318,7 +323,7 @@ if parsed.options.only then
 end
 
 local state = {
-  state = "digdown",
+  state = "digdown", ---@type "digdown"|"seeking"|"returning_home"|"returning_from_seek"|"errored"
   state_info = {}
 }
 
@@ -406,6 +411,23 @@ end
 
 local dig_context = logging.create_context("Dig")
 
+--- Check if the next ore is in range, and if it is, set the state to seeking.
+---@return boolean found_ore True if an ore was found, false otherwise.
+local function check_next_ore()
+  scan_ores()
+
+  local ore_index = get_closest_ore()
+
+  -- if we found an ore, we want to seek it.
+  if ore_index then
+    state.state_info.ore_index = ore_index
+    state.state_info.ore = state.state_info.last_scan[ore_index]
+    state.state = "seeking"
+    return true
+  end
+  return false
+end
+
 --- Dig forward, scanning for ores as we go. Used in place of dig_down when level flag is set.
 ---@param initial_facing turtle_facing The direction the turtle was facing when it started digging.
 local function dig_forward(initial_facing)
@@ -429,16 +451,7 @@ local function dig_forward(initial_facing)
     return
   end
 
-  scan_ores()
-
-  local ore = get_closest_ore(initial_facing)
-
-  -- if we found an ore, we want to seek it.
-  if ore then
-    state.state_info.ore = ore
-    state.state = "seeking"
-    return
-  end
+  check_next_ore()
 
   -- if not, go forward.
   -- Also, ensure we are facing the correct direction.
@@ -468,16 +481,7 @@ local function dig_down()
     return
   end
 
-  scan_ores()
-
-  local ore = get_closest_ore()
-
-  -- if we found an ore, we want to seek it.
-  if ore then
-    state.state_info.ore = ore
-    state.state = "seeking"
-    return
-  end
+  check_next_ore()
 
   -- if not, go down.
   turtle.digDown()
@@ -514,7 +518,7 @@ end
 
 local seek_context = logging.create_context("Seek")
 local function seek(initial_facing)
-  local ore = state.state_info.last_scan[state.state_info.ore]
+  local ore = state.state_info.ore
   local x, y, z = ore.x, ore.y, ore.z
   local direction, distance = aid.get_direction_to(vector.new(x, y, z), true)
   seek_context.debug("Seeking to ore.")
@@ -531,21 +535,15 @@ local function seek(initial_facing)
       aid.face(direction --[[@as cardinal_direction]])
       turtle.dig()
     end
-    table.remove(state.state_info.last_scan, state.state_info.ore) -- remove the ore from the scan
+    table.remove(state.state_info.last_scan, state.state_info.ore_index) -- remove the ore from the scan
 
     seek_context.info("Ore mined, rescanning for more ores.")
-    scan_ores()
 
-    local new_ore = get_closest_ore(initial_facing)
-
-    if new_ore then
-      seek_context.info("Found another ore, seeking to it.")
-      state.state_info.ore = new_ore
-      state.state = "seeking"
-    else
+    if not check_next_ore() then
       seek_context.info("No more ores found, returning from seek.")
       state.state = "returning_from_seek"
     end
+
     return
   end
 
@@ -683,11 +681,17 @@ local function check_inventory()
   return turtle.getItemCount(15) > 0 -- we leave a single slot open in case the turtle comes across a new item while returning home.
 end
 
+--- Return the distance to the surface.
+---@return integer distance The distance to the surface.
+local function distance_to_home()
+  return math.abs(aid.position.y) + math.abs(aid.position.z) + math.abs(aid.position.x)
+end
+
 --- Check that the turtle's fuel level isn't too low. Fuel is considered "too low"
 --- if distance to the surface + 50 is greater than the fuel level.
 ---@return boolean low True if the fuel level is low, false otherwise.
 local function check_fuel()
-  return turtle.getFuelLevel() < (math.abs(aid.position.y) + math.abs(aid.position.z) + math.abs(aid.position.x) + 50)
+  return turtle.getFuelLevel() < (distance_to_home() + 50)
 end
 
 local main_context = logging.create_context("Main")
@@ -699,9 +703,9 @@ end
 local _direction
 local function ask_direction()
   print("What direction is the turtle facing (north, south, east, west)? You can use the F3 menu to determine this.")
-repeat
-  _direction = read()
-until _direction == "north" or _direction == "south" or _direction == "east" or _direction == "west"
+  repeat
+    _direction = read()
+  until _direction == "north" or _direction == "south" or _direction == "east" or _direction == "west"
 end
 
 if aid.is_module_equipped("scanner") then
@@ -733,6 +737,81 @@ end
 
 aid.facing = _direction == "north" and 0 or _direction == "east" and 1 or _direction == "south" and 2 or 3
 
+local function draw_data()
+  -- Draw data to data_win
+  data_win.clear()
+  data_win.setCursorPos(1, 1)
+
+  -- horizontal gray line
+  data_win.setBackgroundColor(colors.gray)
+  data_win.setTextColor(colors.white)
+  data_win.write(string.rep('\x8c', math.ceil(tx / 2) - 3) .. " DATA " .. string.rep('\x8c', math.ceil(tx / 2) - 3))
+
+  -- write position data
+  data_win.setCursorPos(1, 2)
+  data_win.write(("Turtle: X: % 3d Y: % 3d Z: % 3d"):format(aid.position.x, aid.position.y, aid.position.z))
+
+  -- write state data
+  data_win.setCursorPos(1, 3)
+  data_win.write("State: " .. state.state)
+
+  if state.state == "seeking" then
+    data_win.setCursorPos(1, 4)
+    if state.state_info.ore then
+      data_win.write("Seeking: " .. state.state_info.ore.name)
+    else
+      data_win.write("Seeking: Unknown")
+    end
+
+    data_win.setCursorPos(1, 5)
+    if state.state_info.ore then
+      data_win.write(("  At: X: % 3d Y: % 3d Z: % 3d"):format(
+        state.state_info.ore.x,
+        state.state_info.ore.y,
+        state.state_info.ore.z
+      ))
+    else
+      data_win.write("  At: Unknown")
+    end
+  elseif state.state == "digdown" then
+    data_win.setCursorPos(1, 4)
+    data_win.write("Depth: " .. aid.position.y)
+  elseif state.state == "returning_home" then
+    data_win.setCursorPos(1, 4)
+    data_win.write("Returning Home.")
+  elseif state.state == "returning_from_seek" then
+    data_win.setCursorPos(1, 4)
+    data_win.write("Returning to last known height.")
+
+    data_win.setCursorPos(1, 5)
+    data_win.write("  Target depth: " .. state.state_info.depth)
+  elseif state.state == "errored" then
+    data_win.setCursorPos(1, 4)
+    data_win.write("Errored. On way home.")
+  end
+
+  -- Write fuel data
+  data_win.setCursorPos(1, 6)
+  local old_color = data_win.getTextColor()
+
+  local dist = distance_to_home()
+  local level = turtle.getFuelLevel()
+
+  if level < dist + 50 then
+    data_win.setTextColor(colors.red)
+  elseif level < dist + 100 then
+    data_win.setTextColor(colors.orange)
+  elseif level < dist + 400 then
+    data_win.setTextColor(colors.yellow)
+  else
+    data_win.setTextColor(colors.green)
+  end
+
+  data_win.write(("Fuel: %d / %d"):format(level, turtle.getFuelLimit()))
+
+  data_win.setTextColor(old_color)
+end
+
 --load_state() -- initial load
 -- We will reimplement this later, once it's actually ready.
 
@@ -757,6 +836,8 @@ local function main()
 
   while true do
     tick_context.debug("Tick. State is:", state.state)
+
+    draw_data()
 
     if state.state == "digdown" then
       if horizontal then
@@ -816,12 +897,15 @@ if not ok then
   main_context.fatal(err)
   logging.dump_log(LOG_FILE)
 
+  state.state = "errored"
+
   -- Attempt to return home to protect the turtle from becoming lost underground.
   pcall(function()
     main_context.warn("Threw error! Attempting to return home!")
 
     local x = 0
     repeat
+      pcall(draw_data)
       x = x + 1
       if x > 300 then -- 300 chosen arbitrarily. This may or may not be a good value.
         main_context.fatal("Unable to return home, aborting.")
@@ -831,3 +915,6 @@ if not ok then
   end)
 end
 
+-- ensure the prompt is on the terminal.
+term.setCursorPos(1, ty)
+print()
