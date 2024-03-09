@@ -43,6 +43,8 @@ parser.add_flag("h", "help", "Show this help message and exit.")
 parser.add_flag("f", "fuel", "Attempt to refuel as needed from ores mined.")
 parser.add_flag("v", "version", "Show version information and exit.")
 parser.add_flag("l", "level", "Travel in a horizontal line at the current level. Useful for mining sand and other surface ores when used in tandem with include or only.")
+parser.add_flag("m", "muzzle", "Muzzle the dog. This will prevent the dog from barking, but he will be sad.")
+parser.add_flag("b", "bark", "Antagonize the dog by barking at it, this will make the dog bark A LOT.")
 parser.add_argument("max_offset", "The maximum offset from the centerpoint to mine to.", false,  max_offset)
 
 local parsed = parser.parse(table.pack(...))
@@ -475,7 +477,10 @@ local function dig_down()
     return
   end
 
-  check_next_ore()
+  -- If ore detected, immediately switch to seeking it.
+  if check_next_ore() then
+    return
+  end
 
   -- if not, go down.
   turtle.digDown()
@@ -731,6 +736,29 @@ end
 
 aid.facing = _direction == "north" and 0 or _direction == "east" and 1 or _direction == "south" and 2 or 3
 
+--- BARK BARK BARK
+local function BARK_MULTIPLIER()
+  local function BARK_FUNCTION(x)
+    return 0.05 * x^2 + 1
+  end
+
+  if parsed.flags.bark then
+    return 16
+  else
+    return math.max(
+      1.0025,
+      math.min(
+        BARK_FUNCTION(
+          math.abs(math.random(-700, 2500) / 1000)
+        ),
+        1.5
+      )
+    )
+  end
+end
+
+local bark_rng = 0.0001
+local bark_multiplier = BARK_MULTIPLIER()
 local function draw_data()
   -- Draw data to data_win
   data_win.setBackgroundColor(colors.gray)
@@ -806,6 +834,68 @@ local function draw_data()
   data_win.setTextColor(old_color)
 end
 
+local BARK_CONTEXT = logging.create_context("BARKBARK")
+--- BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK 
+local function BARK()
+  local bark_screen = {"###   ##  ###  #  #","#  # #  # #  # # # ","###  #### ###  ##  ","#  # #  # #  # # # ","###  #  # #  # #  #"}
+  local bark_count_rng = math.random(0, 100)
+  local bark_count = bark_count_rng < 50 and 1 or bark_count_rng < 80 and 2 or bark_count_rng < 95 and 3 or 8
+  local bark_win = window.create(term.current(), 1, 1, term.getSize())
+
+  local label = os.getComputerLabel()
+
+  local function _BARK()
+    bark_win.setVisible(false) -- hide the window while we're drawing to it.
+
+    local random_bg_color = math.random(0, 15)
+    bark_win.setBackgroundColor(2^random_bg_color)
+
+    local random_fg_color
+    repeat
+      random_fg_color = math.random(0, 15)
+    until random_fg_color ~= random_bg_color
+    bark_win.setTextColor(2^random_fg_color)
+
+    bark_win.clear()
+    local random_x, random_y = math.random(1, tx - 19), math.random(1, ty - 5)
+
+    for i = 1, #bark_screen do
+      bark_win.setCursorPos(random_x, random_y + i - 1)
+      bark_win.write(bark_screen[i])
+    end
+
+    bark_win.setVisible(true)
+  end
+
+  if parsed.flags.muzzle then
+    BARK_CONTEXT.log(logging.LOG_LEVEL.DEBUG, "WHINE", "WAAAAAAAAAA")
+  else
+    os.setComputerLabel(("BARK"):rep(bark_count))
+    BARK_CONTEXT.log(logging.LOG_LEVEL.INFO, "BARK", ("BARK"):rep(bark_count))
+    for _ = 1, bark_count do
+      _BARK()
+      sleep(math.random(20, 60) / 60)
+    end
+    os.setComputerLabel(label)
+  end
+
+  -- redraw the main windows.
+  log_win.redraw()
+  data_win.redraw()
+end
+
+--- BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK
+local function WANT_BARK()
+  if math.random(1, 1005) * bark_rng > 1 then
+    bark_rng = 0.0001 * (math.random(0, 1) == 0 and 1 or 0.1)
+    bark_multiplier = BARK_MULTIPLIER()
+    return true
+  else
+    bark_rng = bark_rng * bark_multiplier
+    return false
+  end
+end
+
 --load_state() -- initial load
 -- We will reimplement this later, once it's actually ready.
 
@@ -830,6 +920,10 @@ local function main()
 
   while true do
     tick_context.debug("Tick. State is:", state.state)
+
+    if WANT_BARK() then
+      BARK()
+    end
 
     draw_data()
 
