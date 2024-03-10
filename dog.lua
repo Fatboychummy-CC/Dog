@@ -6,12 +6,14 @@
 local expect = require "cc.expect".expect
 
 -- Import libraries
-local aid = require("lib.turtle_aid")
-local file_helper = require("lib.file_helper")
+package.path = package.path .. ";lib/?.lua;lib/?/init.lua"
+
+local aid = require("turtle_aid")
+local file_helper = require("file_helper")
 local root_folder = file_helper:instanced("")
 local data_folder = file_helper:instanced("data")
-local logging = require("lib.logging")
-local simple_argparse = require("lib.simple_argparse")
+local logging = require("logging")
+local simple_argparse = require("simple_argparse")
 
 -- Constants
 local LOG_FILE = fs.combine(data_folder.working_directory, ("dog%d.log"):format(math.random(0, 100000))) -- Logger does not use file_helper, so we need to manually tell it to use this directory.

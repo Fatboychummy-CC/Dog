@@ -1,7 +1,7 @@
 -- build 1
 
 local expect = require "cc.expect".expect
-local file_helper = require "lib.file_helper":instanced("")
+local file_helper = require "file_helper":instanced("")
 
 ---@alias turtle_facing
 ---| 0 # North (negative Z direction)
