@@ -93,6 +93,7 @@ local facings = {
     vector.new( -1, 0, 0) -- negative X direction, west
 }
 
+---@class turtle_aid
 local aid = {
     ---@type vector
     position = vector.new(0, 0, 0),
