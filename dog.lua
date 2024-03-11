@@ -14,6 +14,7 @@ local root_folder = file_helper:instanced("")
 local data_folder = file_helper:instanced("data")
 local logging = require("logging")
 local simple_argparse = require("simple_argparse")
+local plugin_loader = require("plugin_loader")
 
 -- Constants
 local LOG_FILE = fs.combine(data_folder.working_directory, ("dog%d.log"):format(math.random(0, 100000))) -- Logger does not use file_helper, so we need to manually tell it to use this directory.
@@ -975,37 +976,60 @@ local function main()
   main_context.info("Reached home. Done.")
 end
 
-local ok, err = xpcall(main, debug.traceback)
+-- Load plugins and run the main loop.
+plugin_loader.register_all()
 
--- Cleanup before dumping the log, in case the log is large (state file can be upwards of 500kb)
-main_context.debug("Cleaning up...")
-aid.clear_save()
-data_folder:delete(STATE_FILE)
+-- Expose dog data to plugins.
+plugin_loader.expose("dog.state", state)
+plugin_loader.expose("dog.aid", aid)
+plugin_loader.expose("dog.ore_dict", ORE_DICT)
+plugin_loader.expose("dog.program_arguments", parsed)
 
-if not ok then
-  sleep() -- in case this was an infinite loop related error.
-  main_context.fatal(err)
-  logging.dump_log(LOG_FILE)
-  main_context.info("Dumped log as", LOG_FILE)
+local loader_ok, loader_err = xpcall(function()
+  plugin_loader.run(function()
+    local ok, err = xpcall(main, debug.traceback)
 
-  state.state = "errored"
+    -- Cleanup before dumping the log, in case the log is large (state file can be upwards of 500kb)
+    main_context.debug("Cleaning up...")
+    aid.clear_save()
+    data_folder:delete(STATE_FILE)
 
-  -- Attempt to return home to protect the turtle from becoming lost underground.
-  pcall(function()
-    main_context.warn("Threw error! Attempting to return home!")
+    if not ok then
+      sleep() -- in case this was an infinite loop related error.
+      main_context.fatal(err)
+      logging.dump_log(LOG_FILE)
+      main_context.info("Dumped log as", LOG_FILE)
 
-    local x = 0
-    repeat
-      pcall(draw_data)
-      x = x + 1
-      if x > 300 then -- 300 chosen arbitrarily. This may or may not be a good value.
-        main_context.fatal("Unable to return home, aborting.")
-        break
-      end
-    until return_home()
+      state.state = "errored"
+
+      -- Attempt to return home to protect the turtle from becoming lost underground.
+      pcall(function()
+        main_context.warn("Threw error! Attempting to return home!")
+
+        local x = 0
+        repeat
+          pcall(draw_data)
+          x = x + 1
+          if x > 300 then -- 300 chosen arbitrarily. This may or may not be a good value.
+            main_context.fatal("Unable to return home, aborting.")
+            break
+          end
+        until return_home()
+      end)
+    end
+
+    pcall(plugin_loader.stop)
   end)
-end
+end, debug.traceback)
 
 -- ensure the prompt is on the terminal.
 term.setCursorPos(1, ty)
 print()
+
+if loader_ok then
+  logging.dump_log(LOG_FILE)
+else
+  main_context.fatal("Loader error:", loader_err)
+  logging.dump_log(LOG_FILE)
+  error(loader_err, 0)
+end
