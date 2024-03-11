@@ -327,8 +327,22 @@ if parsed.options.only then
   end
 end
 
+---@alias dog_states
+---| "digdown" # The turtle is digging down.
+---| "seeking" # The turtle is mining directly to a specific ore.
+---| "returning_home" # The turtle is returning to the surface.
+---| "returning_from_seek" # The turtle is returning to the last depth reached before seeking.
+---| "errored" # The turtle has errored and will stop.
+---| "inventory_full" # The turtle's inventory is full and it is returning home.
+---| "fuel_low" # The turtle's fuel is low and it is returning home.
+---| "manual_control" # The turtle is being controlled by a plugin.
+
+---@class dog_state
+---@field state dog_states The current state of the turtle.
+---@field wanted_state dog_states? The state the turtle should be in after this state. Used for controlling the turtle via plugins.
+---@field state_info table The information about the current state.
 local state = {
-  state = "digdown", ---@type "digdown"|"seeking"|"returning_home"|"returning_from_seek"|"errored"
+  state = "digdown",
   state_info = {}
 }
 
@@ -763,6 +777,9 @@ end
 local bark_rng = 0.0001
 local bark_multiplier = BARK_MULTIPLIER()
 local function draw_data()
+  -- Hide data_win while we're drawing to it.
+  data_win.setVisible(false)
+
   -- Draw data to data_win
   data_win.setBackgroundColor(colors.gray)
   data_win.clear()
@@ -800,7 +817,7 @@ local function draw_data()
     end
   elseif state.state == "digdown" then
     data_win.setCursorPos(1, 4)
-    data_win.write("Depth: " .. aid.position.y)
+    data_win.write(("Depth: %s"):format(aid.position.y or "?"))
   elseif state.state == "returning_home" then
     data_win.setCursorPos(1, 4)
     data_win.write("Returning Home.")
@@ -809,10 +826,19 @@ local function draw_data()
     data_win.write("Returning to last known height.")
 
     data_win.setCursorPos(1, 5)
-    data_win.write("  Target depth: " .. state.state_info.depth)
+    data_win.write(("  Target depth: %s"):format(state.state_info.depth or "?"))
   elseif state.state == "errored" then
     data_win.setCursorPos(1, 4)
     data_win.write("Errored. On way home.")
+  elseif state.state == "inventory_full" then
+    data_win.setCursorPos(1, 4)
+    data_win.write("Inventory full. On way home.")
+  elseif state.state == "fuel_low" then
+    data_win.setCursorPos(1, 4)
+    data_win.write("Fuel low. On way home.")
+  elseif state.state == "manual_control" then
+    data_win.setCursorPos(1, 4)
+    data_win.write("Manual control.")
   end
 
   -- Write fuel data
@@ -835,6 +861,9 @@ local function draw_data()
   data_win.write(("Fuel: %d / %d"):format(level, turtle.getFuelLimit()))
 
   data_win.setTextColor(old_color)
+
+  -- Unhide data_win
+  data_win.setVisible(true)
 end
 
 local BARK_CONTEXT = logging.create_context("BARKBARK")
@@ -899,6 +928,61 @@ local function WANT_BARK()
   end
 end
 
+---@class dog_control
+local dog_control = {}
+
+--- Set the state of the turtle. Blocks until the state change is complete as the turtle needs to finish its current tick before it can change state.
+---@param new_state dog_states The new state to change to.
+function dog_control.set_next_state(new_state)
+  state.wanted_state = new_state
+  os.pullEvent("dog:state_change_received")
+end
+
+--- Set the state of the turtle. Does not block.
+---@param new_state dog_states The new state to change to.
+function dog_control.set_next_state_async(new_state)
+  state.wanted_state = new_state
+end
+
+--- Pause dog's main loop to take full control of the turtle. Blocks until the state change is complete as the turtle needs to finish its current tick before it can change state. You will need access to the turtle_aid.
+function dog_control.take_control()
+  state.wanted_state = "manual_control"
+  os.pullEvent("dog:state_change_received")
+end
+
+--- Relinquish control of the turtle, allowing the main loop to continue.
+function dog_control.relinquish_control()
+  state.state = "returning_from_seek"
+end
+
+--- Get the maximum depth the turtle is allowed to dig to.
+---@return number max_depth The maximum depth the turtle is allowed to dig to.
+function dog_control.get_max_depth()
+  return max_depth
+end
+
+--- Get the maximum offset the turtle is allowed to dig to.
+---@return number max_offset The maximum offset the turtle is allowed to dig to.
+function dog_control.get_max_offset()
+  return max_offset
+end
+
+--- Get the distance to the surface.
+---@return integer distance The distance to the surface.
+function dog_control.get_distance_to_home()
+  return distance_to_home()
+end
+
+--- Get the contents of the turtle's inventory.
+---@return table inventory The contents of the turtle's inventory.
+function dog_control.get_inventory()
+  local inventory = {}
+  for i = 1, 16 do
+    inventory[i] = turtle.getItemDetail(i)
+  end
+  return inventory
+end
+
 --load_state() -- initial load
 -- We will reimplement this later, once it's actually ready.
 
@@ -923,6 +1007,23 @@ local function main()
 
   while true do
     tick_context.debug("Tick. State is:", state.state)
+
+    if state.wanted_state then
+      state.state = state.wanted_state
+      state.wanted_state = nil
+
+      tick_context.debug("A plugin has altered the state to:", state.state)
+      os.queueEvent("dog:state_change_received")
+    end
+
+    if state.state == "manual_control" then
+      main_context.warn("Control yours.")
+      while state.state == "manual_control" do
+        sleep(0.5)
+        draw_data()
+      end
+      main_context.warn("Taking control.")
+    end
 
     if WANT_BARK() then
       BARK()
@@ -984,6 +1085,7 @@ plugin_loader.expose("dog.state", state)
 plugin_loader.expose("dog.aid", aid)
 plugin_loader.expose("dog.ore_dict", ORE_DICT)
 plugin_loader.expose("dog.program_arguments", parsed)
+plugin_loader.expose("dog.control", dog_control)
 
 local loader_ok, loader_err = xpcall(function()
   plugin_loader.run(function()
@@ -997,7 +1099,7 @@ local loader_ok, loader_err = xpcall(function()
     if not ok then
       sleep() -- in case this was an infinite loop related error.
       main_context.fatal(err)
-      logging.dump_log(LOG_FILE)
+      logging.dump_log(LOG_FILE, true)
       main_context.info("Dumped log as", LOG_FILE)
 
       state.state = "errored"
