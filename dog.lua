@@ -727,7 +727,7 @@ local function ask_direction()
 end
 
 if aid.is_module_equipped("scanner") then
-  main_context.info("Using Plethora scanner, we should be able to determine our own facing.")
+  main_context.info("Using Plethora scanner, we should be able to determine our facing.")
   local blocks = scan()
 
   if type(blocks) == "table" then
@@ -738,18 +738,18 @@ if aid.is_module_equipped("scanner") then
           main_context.info("Found facing in scanner data, facing is", _direction)
           break
         else
-          main_context.warn("No facing found in scanner data, unable to determine facing.")
+          main_context.warn("No facing found in scanner data, asking user for direction instead.")
           ask_direction()
           break
         end
       end
     end
   else
-    main_context.warn("No scanner data returned, unable to determine facing.")
+    main_context.warn("No scanner data returned, asking user for direction instead.")
     ask_direction()
   end
 else
-  main_context.warn("No scanner found, unable to determine facing.")
+  main_context.warn("Using Advanced Peripherals' Geo Scanner, asking user for direction.")
   ask_direction()
 end
 
