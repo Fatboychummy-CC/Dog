@@ -234,7 +234,7 @@ local ORE_DICT = {
   -- ##  MODDED ORES  ##
   -- Create
   ["create:zinc_ore"] = true,
-  ["create_deepslate_zinc_ore"] = true,
+  ["create:deepslate_zinc_ore"] = true,
 
   -- Mekanism
   ["mekanism:tin_ore"] = true,
