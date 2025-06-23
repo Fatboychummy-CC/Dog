@@ -3,6 +3,63 @@
 --- uses either plethora's block scanner or advanced peripheral's geoscanner to
 --- detect where ores are along its path and mine to them.
 
+---@alias Dog.Blocks Dog.Block[]
+
+---@class Dog.Block
+---@field x integer The x coordinate of the block.
+---@field y integer The y coordinate of the block.
+---@field z integer The z coordinate of the block.
+---@field name string The name of the block.
+
+--- The plugin interface for Dog.
+---@class Dog.Plugin : MiniPlugin.Plugin
+---
+--- Dog Event Interface
+---   These methods are implemented by the plugin author
+---
+---@field ready nil|fun(self:Dog.Plugin, args:argparse-parsed) Called once Dog is ready to operate.
+---@field stateChange nil|fun(self:Dog.Plugin, state:Dog.State, old_state:string) Called before Dog's state changes.
+---@field seekingBlock nil|fun(self:Dog.Plugin, state:Dog.State, block:table) Called before Dog starts seeking a block.
+---@field seekedBlock nil|fun(self:Dog.Plugin, state:Dog.State, block:table) Called after Dog has sought a block.
+---@field miningBlock nil|fun(self:Dog.Plugin, state:Dog.State, block:table) Called before Dog mines a block.
+---@field minedBlock nil|fun(self:Dog.Plugin, state:Dog.State, block:table) Called after Dog mines a block.
+---@field returningHome nil|fun(self:Dog.Plugin, state:Dog.State) Called before Dog returns home.
+---@field returnedHome nil|fun(self:Dog.Plugin, state:Dog.State) Called after Dog returns home.
+---@field moving nil|fun(self:Dog.Plugin, state:Dog.State, x:integer, y:integer, z:integer):boolean Called before Dog moves to a specific coordinate. This coordinate should always be a one-block offset from Dog's current position.
+---@field moved nil|fun(self:Dog.Plugin, state:Dog.State, x:integer, y:integer, z:integer, success:boolean, error:string?):boolean Called after Dog moves to a specific coordinate.
+---@field dumpingInventory nil|fun(self:Dog.Plugin, state:Dog.State) Called before Dog dumps its inventory.
+---@field dumpedInventory nil|fun(self:Dog.Plugin, state:Dog.State) Called after Dog dumps its inventory.
+---@field checkedInventory nil|fun(self:Dog.Plugin, state:Dog.State, inventory:table, full:boolean) Called after Dog checks its inventory. The full parameter is true if the inventory is full, false otherwise.
+---@field scanned nil|fun(self:Dog.Plugin, state:Dog.State, scan:table) Called after Dog scans for ores. The scan parameter is a table containing the scan data.
+---@field fuelLow nil|fun(self:Dog.Plugin, state:Dog.State) Called when Dog's fuel level *becomes* low. If Dog starts in a low fuel state, this is called immediately.
+---@field hitBedrock nil|fun(self:Dog.Plugin, state:Dog.State):boolean Called when Dog hits bedrock, before the retracer triggers. If any plugin returns `true`, Dog will continue operating, under the assumption that the plugin has put it in a safe position to continue. If all plugins return `false`, the retracer will activate, and Dog will return home.
+---@field retraced nil|fun(self:Dog.Plugin, state:Dog.State) Called after Dog retraces its path.
+---
+--- Dog Data Requesters/Modifiers
+---   These methods are implemented by Dog and can be used by plugins to collect data from Dog or modify Dog's data.
+---   !! THESE METHODS MAY NOT BE AVAILABLE UNTIL AFTER :ready() IS CALLED !!
+---
+---@field addOreDictEntry fun(self:Dog.Plugin, block_name:string) Adds an entry to the ore dictionary. 
+---@field removeOreDictEntry fun(self:Dog.Plugin, block_name:string) Removes an entry from the ore dictionary.
+---@field getOreDict fun(self:Dog.Plugin):table<string, boolean> Collects the ore dictionary from Dog.
+---@field getState fun(self:Dog.Plugin):Dog.State Gets the current state of Dog.
+---@field setState fun(self:Dog.Plugin, state:Dog.State) Sets the current state of Dog. This will also trigger a state change event, if `state.state` is changed.
+---@field teleTo fun(self:Dog.Plugin, x:integer, y:integer, z:integer):boolean Sets Dog's current position to the specified coordinate coordinates (doesn't actually teleport! Just sets the internal coordinates).
+---@field teleToRelative fun(self:Dog.Plugin, x:integer, y:integer, z:integer):boolean Sets Dog's current position to the specified coordinates relative to its current position (doesn't actually teleport! Just sets the internal coordinates).
+---@field getPosition fun(self:Dog.Plugin):vector Gets Dog's current position.
+---@field getScanner fun(self:Dog.Plugin):"scanner"|"geoscanner"|nil Gets the type of scanner Dog is using, either "scanner" or "geoscanner". Returns `nil` until Dog is initialized.
+---
+--- Dog Actions
+---   These methods are implemented by Dog and can be used by plugins to perform actions.
+---   All these methods will trigger the appropriate events, so plugins can listen to them.
+---   !! THESE METHODS MAY NOT BE AVAILABLE UNTIL AFTER :ready() IS CALLED !!
+---
+---@field moveTo fun(self:Dog.Plugin, x:integer, y:integer, z:integer):boolean Moves Dog to the specified coordinates.
+---@field moveToRelative fun(self:Dog.Plugin, x:integer, y:integer, z:integer):boolean Moves Dog to the specified coordinates relative to its current position.
+---@field dig fun(self:Dog.Plugin, direction:cardinal_direction):boolean Digs in the specified direction.
+---@field mine fun(self:Dog.Plugin, x:integer, y:integer, z:integer):boolean Mines the block at the specified coordinates.
+---@field mineRelative fun(self:Dog.Plugin, x:integer, y:integer, z:integer):boolean Mines the block at the specified coordinates relative to Dog's current position.
+
 local expect = require "cc.expect".expect
 
 -- Import libraries
@@ -12,8 +69,10 @@ local aid = require("turtle_aid")
 local file_helper = require("file_helper")
 local root_folder = file_helper:instanced("")
 local data_folder = file_helper:instanced("data")
+local plugin_folder = file_helper:instanced("dog_plugins")
 local logging = require("logging")
 local simple_argparse = require("simple_argparse")
+local miniplugin = require("miniplugin")
 
 -- Constants
 local LOG_FILE = fs.combine(data_folder.working_directory, ("dog%d.log"):format(math.random(0, 100000))) -- Logger does not use file_helper, so we need to manually tell it to use this directory.
@@ -33,6 +92,42 @@ local do_fuel = false
 local horizontal = false
 local version = "V0.14.3"
 local latest_changes = [[Added a few more blocks as ores. If you wish to add some that are missing, PRs are open!]]
+
+-- Initial setup
+
+if not plugin_folder:exists() then
+  plugin_folder:make_dir()
+end
+if not data_folder:exists() then
+  data_folder:make_dir()
+end
+
+-- Build and load plugins
+miniplugin.buildFromDirectory(plugin_folder.working_directory)
+miniplugin.loadAll()
+
+-- Inject all additional methods into the plugins.
+
+--- Ties an action (function) to a plugin method.
+---@param f function The function to tie the action to.
+---@param action string The name of the plugin method to call upon this action.
+---@param getter function A function that returns the data needed by the plugin method.
+---@param b_or_a "before"|"after" If "before", the plugin method will be called before the action is executed. If "after", the plugin method will be called after the action is executed.
+---@return function action The tied action function. This should now be called instead of the original function.
+local function tie_action(f, action, getter, b_or_a)
+  return function(...)
+    if b_or_a == "before" then
+      miniplugin.dispatchEvent(action, getter())
+
+      return f(...)
+    else
+      local returns = table.pack(f(...))
+      miniplugin.dispatchEvent(action, getter())
+
+      return table.unpack(returns, 1, returns.n)
+    end
+  end
+end
 
 local parser = simple_argparse.new_parser("dog", "Dog is a program run on mining turtles which is used to find ores and mine them. Unlike quarry programs, this program digs in a straight line down and uses either plethora's block scanner or advanced peripheral's geoscanner to detect where ores are along its path and mine to them.")
 parser.add_option("depth", "The maximum depth to dig to.", max_depth)
@@ -55,7 +150,6 @@ term.setCursorPos(1, 3)
 
 -- FLAGS
 if parsed.flags.help then
-  local _, h = term.getSize()
   textutils.pagedPrint(parser.usage())
   return
 end
@@ -343,10 +437,57 @@ if parsed.options.only then
   end
 end
 
+---@alias dog_state "digdown"|"seeking"|"returning_home"|"returning_from_seek"|"errored"
+
+---@class Dog.State
+---@field state dog_state The current state of the turtle.
+---@field state_info table A table containing information about the current state of the turtle.
 local state = {
-  state = "digdown", ---@type "digdown"|"seeking"|"returning_home"|"returning_from_seek"|"errored"
+  state = "digdown",
   state_info = {depth = 0}
 }
+
+local function deep_copy(t)
+  local copy = {}
+
+  for k, v in pairs(t) do
+    if type(v) == "table" then
+      copy[k] = deep_copy(v)
+    else
+      copy[k] = v
+    end
+  end
+
+  return copy
+end
+
+local function update_state(new_state)
+  local old_state = deep_copy(state)
+
+  local function move_t(a, b)
+    -- Move all entries over, recursively.
+    for k, v in pairs(a) do
+      if type(v) == "table" then
+        if not b[k] then
+          b[k] = {}
+        end
+        move_t(v, b[k])
+      else
+        b[k] = v
+      end
+    end
+
+    -- Remove all entries from b that are not in a.
+    for k in pairs(b) do
+      if type(a[k]) == "nil" then
+        b[k] = nil
+      end
+    end
+  end
+
+  move_t(new_state, state)
+end
+update_state = tie_action(update_state, "stateChange", function() return state, old_state end, "before")
 
 --- Strip the scan data down to just the coordinates and block name, then offset every block by the turtle's offset from home.
 ---@param data table<integer, table>
