@@ -39,7 +39,7 @@
 ---   These methods are implemented by Dog and can be used by plugins to collect data from Dog or modify Dog's data.
 ---   !! THESE METHODS MAY NOT BE AVAILABLE UNTIL AFTER :ready() IS CALLED !!
 ---
----@field addOreDictEntry fun(self:Dog.Plugin, block_name:string) Adds an entry to the ore dictionary. 
+---@field addOreDictEntry fun(self:Dog.Plugin, block_name:string) Adds an entry to the ore dictionary.
 ---@field removeOreDictEntry fun(self:Dog.Plugin, block_name:string) Removes an entry from the ore dictionary.
 ---@field getOreDict fun(self:Dog.Plugin):table<string, boolean> Collects the ore dictionary from Dog.
 ---@field getState fun(self:Dog.Plugin):Dog.State Gets the current state of Dog.
@@ -65,23 +65,22 @@ local expect = require "cc.expect".expect
 -- Import libraries
 package.path = package.path .. ";lib/?.lua;lib/?/init.lua"
 
-local aid = require("turtle_aid")
-local file_helper = require("file_helper")
-local root_folder = file_helper:instanced("")
-local data_folder = file_helper:instanced("data")
-local plugin_folder = file_helper:instanced("dog_plugins")
-local logging = require("logging")
+local aid = require "turtle_aid"
+local fs = require "filesystem":programPath()
+local root_folder = fs
+local data_folder = fs:at("data")
+local plugin_folder = fs:at("plugins")
+local minilogger = require("minilogger")
 local simple_argparse = require("simple_argparse")
 local miniplugin = require("miniplugin")
 
 -- Constants
-local LOG_FILE = fs.combine(data_folder.working_directory, ("dog%d.log"):format(math.random(0, 100000))) -- Logger does not use file_helper, so we need to manually tell it to use this directory.
-local STATE_FILE = "dog.state"
+local STATE_FILE = data_folder:file("dog.state")
 
 -- Variables
 local main_win = term.current()
 local max_depth = 512
-local log_level = logging.LOG_LEVEL.INFO
+local log_level = minilogger.LOG_LEVELS.INFO
 local tx, ty = term.getSize()
 local log_win = window.create(window.create(main_win, 1, 1, tx, 7), 1, 1, tx, 8) -- overlap the height by one so we can print to the bottom of the window.
 local data_win = window.create(main_win, 1, 8, tx, ty - 7)
@@ -96,14 +95,14 @@ local latest_changes = [[Added a few more blocks as ores. If you wish to add som
 -- Initial setup
 
 if not plugin_folder:exists() then
-  plugin_folder:make_dir()
+  plugin_folder:mkdir()
 end
 if not data_folder:exists() then
-  data_folder:make_dir()
+  data_folder:mkdir()
 end
 
 -- Build and load plugins
-miniplugin.buildFromDirectory(plugin_folder.working_directory)
+miniplugin.buildFromDirectory(tostring(plugin_folder))
 miniplugin.loadAll()
 
 -- Inject all additional methods into the plugins.
@@ -168,7 +167,7 @@ end
 
 -- OPTIONS
 if parsed.options.loglevel then
-  log_level = logging.LOG_LEVEL[parsed.options.loglevel:upper()]
+  log_level = minilogger.LOG_LEVELS[parsed.options.loglevel:upper()]
   if not log_level then
     error("Invalid log level.", 0)
   end
@@ -198,108 +197,8 @@ if parsed.arguments[1] then
   end
 end
 
-logging.set_level(log_level)
-logging.set_window(log_win)
-
--- Initial setup
-do
-  -- Stage 1: Check for scanner and pickaxe, equip them if not already done.
-  local setup_context = logging.create_context("Setup")
-  setup_context.info("Checking for pickaxe and scanner.")
-
-  local scanner, geoscanner = aid.is_module_equipped("scanner"), aid.is_module_equipped("geoScanner")
-
-  if scanner or geoscanner then
-    setup_context.debug("Found scanner.")
-    if scanner and geoscanner then
-      error("Who ported which mod to which loader, and why?", 0)
-    end
-  else
-    if aid.swap_module("scanner", "left") then
-      scanner = "left"
-      setup_context.debug("Found scanner.")
-    elseif aid.swap_module("geoScanner", "left") then
-      geoscanner = "left"
-      setup_context.debug("Found geoscanner.")
-    else
-      error("No scanner or geoscanner found.", 0)
-    end
-  end
-
-  if aid.is_module_equipped("pickaxe") then
-    setup_context.debug("Found pickaxe.")
-  else
-    if aid.swap_module("pickaxe", "right") then
-      setup_context.debug("Found pickaxe.")
-    else
-      error("No pickaxe found.", 0)
-    end
-  end
-
-  if scanner then
-    setup_context.debug("Using scanner on", scanner, "side.")
-    scan = function()
-      return peripheral.call(scanner, "scan")
-    end
-  end
-
-  if geoscanner then
-    setup_context.debug("Using geoscanner on", geoscanner, "side.")
-    scan = function()
-      return peripheral.call(geoscanner, "scan", geoscanner_range)
-    end
-  end
-end
-
--- The following turtle states are used:
--- 1. digdown - The turtle is digging down.
--- 2. seeking - The turtle is mining directly to a specific ore.
--- 3. returning_home - The turtle is returning to the surface.
--- 4. returning_from_seek - The turtle is returning to the last depth reached before seeking.
---
--- The turtle should follow the following steps, on EVERY block. Entering a new
--- should be counted as a "tick".
---
--- 1. Check current state.
--- 2. If digging down:
---   1. Check if the block below is bedrock.
---   2. If it is, change state to returning_home.
---   3. If it is not:
---     1. Scan around the turtle for ores.
---     2. If there are ores, change state to seeking, add ore position to state_info.
---     3. If there are not ores, dig down, then move down.
--- 3. If seeking:
---   1. Calculate direction needed to move to the ore.
---   2. Check if bedrock is blocking the way.
---     1. If it is, change state to returning_home.
---   3. If the turtle is beside the ore, mine it but do not move into it.
---     1. If it is not, move in the calculated direction, breaking blocks as needed.
---   4. If the turtle has collected the ore, scan for ores.
---     1. If there are ores, keep state as seeking, add new ore position to state_info.
---     2. If there are no ores, change state to returning_from_seek.
--- 4. If returning_home:
---   1. Check if the turtle is at the surface.
---   2. If it is, end program.
---   3. If it is not, calculate offset to centerpoint, move in that direction.
---     1. If the turtle is already at the centerpoint, move up.
--- 5. If returning_from_seek:
---   1. Check if the turtle is at the last depth reached before seeking.
---   2. If it is, and the turtle is at the centerpoint, change state to digging down.
---   3. If it is not, calculate offset to centerpoint, move in that direction.
---
--- The turtle does not automatically check fuel levels unless the fuel flag is
--- set. If the fuel flag is set, the turtle will check fuel levels every time it
--- moves, and if it is below 1000, it will attempt to refuel from ores mined.
--- If the turtle is unable to refuel and the distance to home is within 50 of
--- the remaining fuel, it will return home and end the program.
---
--- The turtle will also check for inventory space every time it mines a block,
--- and if it is full, it will return home then return to the last depth reached.
---
--- During all of the above, the turtle should save its state to a file every
--- time it changes state. This file should be loaded on startup, and if it
--- exists, the turtle should resume from where it left off. If the file does
--- not exist, the turtle should assume it is starting from the surface.
+minilogger.set_log_level(log_level)
+minilogger.set_log_window(log_win)
 
 local ORE_DICT = {
   -- ## BASE ORES ##
@@ -375,69 +274,216 @@ local ORE_DICT = {
   ["deepresonance:resonating_ore_nether"] = true,
   ["deepresonance:resonating_ore_end"] = true,
 }
-if parsed.options.exclude then
-  if root_folder:exists(parsed.options.exclude) then
-    local exclude = root_folder:unserialize(parsed.options.exclude)
-    if type(exclude) == "table" then
-      -- it's possible to do both `{["minecraft:ore"] = true}` and `{"minecraft:ore"}`, so we need to check for both.
-      for key, value in pairs(exclude) do
-        if type(key) == "string" then
-          ORE_DICT[key] = nil
-        end
-        if type(value) == "string" then
-          ORE_DICT[value] = nil
-        end
-      end
+
+
+-- Initial setup
+do
+  --#region Scanner/Pickaxe setup
+  -- Stage 1: Check for scanner and pickaxe, equip them if not already done.
+  local setup_context = minilogger.new("dog.setup")
+  setup_context.info("Checking for pickaxe and scanner.")
+
+  local scanner, geoscanner = aid.is_module_equipped("scanner"), aid.is_module_equipped("geoScanner")
+
+  if scanner or geoscanner then
+    setup_context.debug("Found scanner.")
+    if scanner and geoscanner then
+      error("Who ported which mod to which loader, and why has nobody told me yet? Please report this on the Dog Github, then relaunch using only one of the scanners.", 0)
+    end
+  else
+    if aid.swap_module("scanner", "left") then
+      scanner = "left"
+      setup_context.debug("Found scanner.")
+    elseif aid.swap_module("geoScanner", "left") then
+      geoscanner = "left"
+      setup_context.debug("Found geoscanner.")
     else
+      error("No scanner or geoscanner found.", 0)
+    end
+  end
+
+  if aid.is_module_equipped("pickaxe") then
+    setup_context.debug("Found pickaxe.")
+  else
+    if aid.swap_module("pickaxe", "right") then
+      setup_context.debug("Found pickaxe.")
+    else
+      error("No pickaxe found.", 0)
+    end
+  end
+
+  if scanner then
+    setup_context.debug("Using scanner on", scanner, "side.")
+    scan = function()
+      return peripheral.call(scanner, "scan")
+    end
+  end
+
+  if geoscanner then
+    setup_context.debug("Using geoscanner on", geoscanner, "side.")
+    scan = function()
+      return peripheral.call(geoscanner, "scan", geoscanner_range)
+    end
+  end
+  --#endregion Scanner/Pickaxe setup
+
+
+  --#region Options
+
+  if parsed.options.exclude then
+    local exclude_file = parsed.options.exclude:sub(1, 1) == "/" and root_folder:absolute(parsed.options.exclude):file()
+      or root_folder:file(parsed.options.exclude)
+    if not exclude_file:exists() then
+      error("Exclude file does not exist.", 0)
+    end
+    if exclude_file:isDirectory() then
+      error("Exclude file must be a file, not a directory.", 0)
+    end
+    local exclude = exclude_file:unserialize()
+    if type(exclude) ~= "table" then
       error("Failed to parse exclude file.", 0)
     end
-  else
-    error("Exclude file does not exist.", 0)
-  end
-end
-if parsed.options.include then
-  if root_folder:exists(parsed.options.include) then
-    local include = root_folder:unserialize(parsed.options.include)
-    if type(include) == "table" then
-      -- it's possible to do both `{["minecraft:ore"] = true}` and `{"minecraft:ore"}`, so we need to check for both.
-      for key, value in pairs(include) do
-        if type(key) == "string" then
-          ORE_DICT[key] = true
-        end
-        if type(value) == "string" then
-          ORE_DICT[value] = true
-        end
+
+    local n_skipped = 0
+    for key, value in pairs(exclude) do
+      if type(key) == "string" then
+        ORE_DICT[key] = nil
       end
-    else
+      if type(value) == "string" then
+        ORE_DICT[value] = nil
+      end
+
+      if type(key) ~= "string" and type(value) ~= "string" then
+        n_skipped = n_skipped + 1
+      end
+    end
+
+    if n_skipped > 0 then
+      setup_context.warn("Skipped", n_skipped, "invalid entries in exclude file.")
+    end
+  end
+  if parsed.options.include then
+    local include_file = parsed.options.include:sub(1, 1) == "/" and root_folder:absolute(parsed.options.include):file()
+      or root_folder:file(parsed.options.include)
+    if not include_file:exists() then
+      error("Include file does not exist.", 0)
+    end
+    if include_file:isDirectory() then
+      error("Include file must be a file, not a directory.", 0)
+    end
+    local include = include_file:unserialize()
+    if type(include) ~= "table" then
       error("Failed to parse include file.", 0)
     end
-  else
-    error("Include file does not exist.", 0)
-  end
-end
-if parsed.options.only then
-  if root_folder:exists(parsed.options.only) then
-    local only = root_folder:unserialize(parsed.options.only)
-    if type(only) == "table" then
-      ORE_DICT = {} -- reset the ore dictionary, we're only mining what's in the only file.
-      -- it's possible to do both `{["minecraft:ore"] = true}` and `{"minecraft:ore"}`, so we need to check for both.
-      for key, value in pairs(only) do
-        if type(key) == "string" then
-          ORE_DICT[key] = true
-        end
-        if type(value) == "string" then
-          ORE_DICT[value] = true
-        end
+
+    local n_skipped = 0
+    for key, value in pairs(include) do
+      if type(key) == "string" then
+        ORE_DICT[key] = true
       end
-    else
+      if type(value) == "string" then
+        ORE_DICT[value] = true
+      end
+
+      if type(key) ~= "string" and type(value) ~= "string" then
+        n_skipped = n_skipped + 1
+      end
+    end
+
+    if n_skipped > 0 then
+      setup_context.warn("Skipped", n_skipped, "invalid entries in include file.")
+    end
+  end
+  if parsed.options.only then
+    local only_file = parsed.options.only:sub(1, 1) == "/" and root_folder:absolute(parsed.options.only):file()
+      or root_folder:file(parsed.options.only)
+    if not only_file:exists() then
+      error("Only file does not exist.", 0)
+    end
+    if only_file:isDirectory() then
+      error("Only file must be a file, not a directory.", 0)
+    end
+    local only = only_file:unserialize()
+    if type(only) ~= "table" then
       error("Failed to parse only file.", 0)
     end
-  else
-    error("Only file does not exist.", 0)
+
+    ORE_DICT = {} -- reset the ore dictionary, we're only mining what's in the only file.
+    local n_skipped = 0
+    for key, value in pairs(only) do
+      if type(key) == "string" then
+        ORE_DICT[key] = true
+      end
+      if type(value) == "string" then
+        ORE_DICT[value] = true
+      end
+
+      if type(key) ~= "string" and type(value) ~= "string" then
+        n_skipped = n_skipped + 1
+      end
+    end
+
+    if n_skipped > 0 then
+      setup_context.warn("Skipped", n_skipped, "invalid entries in only file.")
+    end
   end
+
+  --#endregion Options
+
+
 end
 
----@alias dog_state "digdown"|"seeking"|"returning_home"|"returning_from_seek"|"errored"
+-- The following turtle states are used:
+-- 1. digdown - The turtle is digging down.
+-- 2. seeking - The turtle is mining directly to a specific ore.
+-- 3. returning_home - The turtle is returning to the surface.
+-- 4. returning_from_seek - The turtle is returning to the last depth reached before seeking.
+--
+-- The turtle should follow the following steps, on EVERY block. Entering a new
+-- should be counted as a "tick".
+--
+-- 1. Check current state.
+-- 2. If digging down:
+--   1. Check if the block below is bedrock.
+--   2. If it is, change state to returning_home.
+--   3. If it is not:
+--     1. Scan around the turtle for ores.
+--     2. If there are ores, change state to seeking, add ore position to state_info.
+--     3. If there are not ores, dig down, then move down.
+-- 3. If seeking:
+--   1. Calculate direction needed to move to the ore.
+--   2. Check if bedrock is blocking the way.
+--     1. If it is, change state to returning_home.
+--   3. If the turtle is beside the ore, mine it but do not move into it.
+--     1. If it is not, move in the calculated direction, breaking blocks as needed.
+--   4. If the turtle has collected the ore, scan for ores.
+--     1. If there are ores, keep state as seeking, add new ore position to state_info.
+--     2. If there are no ores, change state to returning_from_seek.
+-- 4. If returning_home:
+--   1. Check if the turtle is at the surface.
+--   2. If it is, end program.
+--   3. If it is not, calculate offset to centerpoint, move in that direction.
+--     1. If the turtle is already at the centerpoint, move up.
+-- 5. If returning_from_seek:
+--   1. Check if the turtle is at the last depth reached before seeking.
+--   2. If it is, and the turtle is at the centerpoint, change state to digging down.
+--   3. If it is not, calculate offset to centerpoint, move in that direction.
+--
+-- The turtle does not automatically check fuel levels unless the fuel flag is
+-- set. If the fuel flag is set, the turtle will check fuel levels every time it
+-- moves, and if it is below 1000, it will attempt to refuel from ores mined.
+-- If the turtle is unable to refuel and the distance to home is within 50 of
+-- the remaining fuel, it will return home and end the program.
+--
+-- The turtle will also check for inventory space every time it mines a block,
+-- and if it is full, it will return home then return to the last depth reached.
+--
+-- During all of the above, the turtle should save its state to a file every
+-- time it changes state. This file should be loaded on startup, and if it
+-- exists, the turtle should resume from where it left off. If the file does
+-- not exist, the turtle should assume it is starting from the surface.
+
+---@alias dog_state "digdown"|"seeking"|"returning_home"|"returning_from_seek"|"errored"|"fuel_low"|"inventory_full"
 
 ---@class Dog.State
 ---@field state dog_state The current state of the turtle.
@@ -446,48 +492,6 @@ local state = {
   state = "digdown",
   state_info = {depth = 0}
 }
-
-local function deep_copy(t)
-  local copy = {}
-
-  for k, v in pairs(t) do
-    if type(v) == "table" then
-      copy[k] = deep_copy(v)
-    else
-      copy[k] = v
-    end
-  end
-
-  return copy
-end
-
-local function update_state(new_state)
-  local old_state = deep_copy(state)
-
-  local function move_t(a, b)
-    -- Move all entries over, recursively.
-    for k, v in pairs(a) do
-      if type(v) == "table" then
-        if not b[k] then
-          b[k] = {}
-        end
-        move_t(v, b[k])
-      else
-        b[k] = v
-      end
-    end
-
-    -- Remove all entries from b that are not in a.
-    for k in pairs(b) do
-      if type(a[k]) == "nil" then
-        b[k] = nil
-      end
-    end
-  end
-
-  move_t(new_state, state)
-end
-update_state = tie_action(update_state, "stateChange", function() return state, old_state end, "before")
 
 --- Strip the scan data down to just the coordinates and block name, then offset every block by the turtle's offset from home.
 ---@param data table<integer, table>
@@ -516,11 +520,11 @@ local function scan_ores()
 end
 
 local function save_state()
-  data_folder:serialize(STATE_FILE, state, true)
+  STATE_FILE:serialize(state, {compact=true})
 end
 
 local function load_state()
-  local loaded_state = data_folder:unserialize(STATE_FILE ,{
+  local loaded_state = STATE_FILE:unserialize({
     state = "digdown",
     state_info = {depth = 0}
   })
@@ -528,8 +532,6 @@ local function load_state()
     state = loaded_state
   end
 end
-
-local ore_context = logging.create_context("Ore")
 
 --- Get the closest ore to the turtle.
 ---@return integer? closest_ore_index The index of the closest ore in the last scan, or nil if no ores were found in the scan.
@@ -565,7 +567,7 @@ local function get_closest_ore(initial_facing)
   return closest_ore
 end
 
-local dig_context = logging.create_context("Dig")
+local dig_context = minilogger.new("dog.dig")
 
 --- Check if the next ore is in range, and if it is, set the state to seeking.
 ---@return boolean found_ore True if an ore was found, false otherwise.
@@ -587,8 +589,6 @@ end
 --- Dig forward, scanning for ores as we go. Used in place of dig_down when level flag is set.
 ---@param initial_facing turtle_facing The direction the turtle was facing when it started digging.
 local function dig_forward(initial_facing)
-  dig_context.debug("Digging forward.")
-
   -- max_depth will now be the maximum distance forward we can go, so we need to determine
   -- which way is "forward" and how far we are along that axis.
   local forward_axis
@@ -598,11 +598,15 @@ local function dig_forward(initial_facing)
     forward_axis = "x"
   end
 
-  dig_context.debug("Current depth is", math.abs(aid.position[forward_axis]))
-  dig_context.debug("Max depth is", max_depth)
+  dig_context.debugf(
+    "Digging facing %s%s, at depth %d/%d",
+    (initial_facing == 0 or initial_facing == 3 and "-") or "",
+    initial_facing,
+    aid.position[forward_axis], max_depth
+  )
 
   if math.abs(aid.position[forward_axis]) >= max_depth then
-    dig_context.info("Reached max depth, returning home.")
+    dig_context.okay("Reached max depth, returning home.")
     state.state = "returning_home"
     return
   end
@@ -619,20 +623,17 @@ end
 
 --- Dig down, scanning for ores as we go.
 local function dig_down()
-  dig_context.debug("Digging down.")
-
-  dig_context.debug("Current depth is", aid.position.y)
-  dig_context.debug("Max depth is", max_depth)
+  dig_context.debugf("Digging down at depth %d/%d", aid.position.y, max_depth)
 
   if aid.position.y < -max_depth then
-    dig_context.info("Reached max depth, returning home.")
+    dig_context.okay("Reached max depth, returning home.")
     state.state = "returning_home"
     return
   end
 
   local success, block_data = turtle.inspectDown()
   if success and block_data.name == "minecraft:bedrock" then
-    dig_context.warn("Hit bedrock, returning home.")
+    dig_context.okay("Hit bedrock, returning home.")
     state.state = "returning_home"
     return
   end
@@ -648,7 +649,7 @@ local function dig_down()
   state.state_info.depth = aid.position.y
 end
 
-local bedrock_watch = logging.create_context("Bedrock Watch")
+local bedrock_watch = minilogger.new("dog.bedrock")
 local function inspect_for_bedrock(direction)
   if direction == "forward" then
     local success, block = turtle.inspect()
@@ -675,14 +676,17 @@ local function inspect_for_bedrock(direction)
   return false
 end
 
-local seek_context = logging.create_context("Seek")
+local seek_context = minilogger.new("dog.seek")
 local function seek(initial_facing)
   local ore = state.state_info.ore
   local x, y, z = ore.x, ore.y, ore.z
   local direction, distance = aid.get_direction_to(vector.new(x, y, z), true)
-  seek_context.debug("Seeking to ore.")
-  seek_context.debug("Ore is", distance, "blocks away, positioned at", x, y, z)
-  seek_context.debug("Turtle is positioned at", aid.position.x, aid.position.y, aid.position.z)
+  seek_context.debugf(
+    "Seeking to ore at (%d, %d, %d) from (%d, %d, %d), distance: %d.",
+    x, y, z,
+    aid.position.x, aid.position.y, aid.position.z,
+    distance
+  )
 
   if distance == 1 then
     seek_context.info("Ore is adjacent, mining.")
@@ -696,7 +700,7 @@ local function seek(initial_facing)
     end
     table.remove(state.state_info.last_scan, state.state_info.ore_index) -- remove the ore from the scan
 
-    seek_context.info("Ore mined, rescanning for more ores.")
+    seek_context.okay("Ore mined, rescanning for more ores.")
 
     if not check_next_ore() then
       seek_context.info("No more ores found, returning from seek.")
@@ -707,7 +711,6 @@ local function seek(initial_facing)
   end
 
   if direction == "up" then
-    ---@TODO: If bedrock is above, currently the turtle will be stuck. We will need to add a path retracer for this.
     if inspect_for_bedrock("up") then return end
 
     aid.gravel_protected_dig_up()
@@ -788,8 +791,10 @@ local function return_home()
   return false
 end
 
-local r_seek_context = logging.create_context("Return from seek")
+local r_seek_context = minilogger.new("dog.return_seek")
 local function return_seek(initial_facing)
+  r_seek_context.debugf("Returning from seek to depth %d.", state.state_info.depth)
+
   local finished, bedrock
   if horizontal then
     local initial_axis = (initial_facing == 0 or initial_facing == 2) and "z" or "x"
@@ -807,12 +812,13 @@ local function return_seek(initial_facing)
   end
 
   if bedrock then
+    ---@TODO Check if this will cause infinite loops.
     bedrock_watch.info("Path retrace complete.")
   end
   return false
 end
 
-local dump_context = logging.create_context("Dump Inventory")
+local dump_context = minilogger.new("dog.dump")
 local function dump_inventory()
   -- First, find and face the chest.
   while not aid.find_chest() do
@@ -821,15 +827,22 @@ local function dump_inventory()
   end
 
   -- Then, dump the inventory.
+  local initial_fuel = turtle.getFuelLevel()
   for i = 1, 16 do
     if turtle.getItemCount(i) > 0 then
       turtle.select(i)
       if do_fuel and turtle.refuel() then
-        dump_context.info("Refueled. Now have", turtle.getFuelLevel(), "fuel.")
+        dump_context.debug("Refueled from slot", i)
       end
       turtle.drop()
     end
   end
+  dump_context.okayf(
+    "Dumped inventory, gained %d fuel (%d/%d).",
+    turtle.getFuelLevel() - initial_fuel,
+    turtle.getFuelLevel(),
+    turtle.getFuelLimit()
+  )
 
   turtle.select(1) -- ensure the first slot is selected always.
 end
@@ -853,7 +866,7 @@ local function check_fuel()
   return turtle.getFuelLevel() < (distance_to_home() + 10)
 end
 
-local main_context = logging.create_context("Main")
+local main_context = minilogger.new("dog.main")
 -- The turtle cannot know what direction it is facing initially, ask for that.
 if horizontal and not parsed.options.depth then
   main_context.warn(("Turtle is set to move horizontally, but no max depth was specified. The turtle will go %d blocks forward! If this is okay, enter the direction as normal, otherwise terminate now!"):format(max_depth))
@@ -867,6 +880,7 @@ local function ask_direction()
   until _direction == "north" or _direction == "south" or _direction == "east" or _direction == "west"
 end
 
+---@FIXME implement a way to determine the turtle's facing direction automatically, even without plethora's scanner.
 if aid.is_module_equipped("scanner") then
   main_context.info("Using Plethora scanner, we should be able to determine our facing.")
   local blocks = scan()
@@ -996,8 +1010,19 @@ local function draw_data()
   data_win.setTextColor(old_color)
 end
 
-local BARK_CONTEXT = logging.create_context("BARKBARK")
---- BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK 
+---@FIXME Implement different bark sounds based on state changes. Get rid of this random bark system.
+--- In an ideal world, the below would be implemented, however, I need to limit the number of sounds
+--- played, since each sound play will require swapping one of the modules, which takes time.
+--- entity.wolf.ambient -- Bark sound, runs when detecting a new ore, and upon startup.
+--- entity.wolf.death -- ???
+--- entity.wolf.growl -- Runs when the turtle detects bedrock.
+--- entity.wolf.hurt -- Can we get this to run when the turtle enters lava?
+--- entity.wolf.howl -- Runs after the turtle returns to the surface.
+--- entity.wolf.shake -- Can we get this to run after exiting water?
+--- entity.wolf.whine -- Runs when the turtle is idle (no chest found)
+--- entity.ender_dragon.death -- Runs if the turtle runs out of fuel (or is otherwise unable to return home).
+local BARK_CONTEXT = minilogger.new("dog.BARKBARKBARKBARKBARK")
+--- BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK BARK
 local function BARK()
   local bark_screen = {"###   ##  ###  #  #","#  # #  # #  # # # ","###  #### ###  ##  ","#  # #  # #  # # # ","###  #  # #  # #  #"}
   local bark_count_rng = math.random(0, 100)
@@ -1030,10 +1055,11 @@ local function BARK()
   end
 
   if parsed.flags.muzzle then
-    BARK_CONTEXT.log(logging.LOG_LEVEL.DEBUG, "WHINE", "WAAAAAAAAAA")
+    BARK_CONTEXT.debug("*whines*")
   else
+    local BARK = ("BARK"):rep(bark_count)
     os.setComputerLabel(("BARK"):rep(bark_count))
-    BARK_CONTEXT.log(logging.LOG_LEVEL.INFO, "BARK", ("BARK"):rep(bark_count))
+    BARK_CONTEXT.info(BARK)
     for _ = 1, bark_count do
       _BARK()
       sleep(math.random(20, 60) / 60)
@@ -1063,7 +1089,7 @@ end
 
 -- Main loop
 local function main()
-  local tick_context = logging.create_context("Tick")
+  local tick_context = minilogger.new("dog.tick")
   aid.set_retrace_distance(math.min(16, max_offset * 4))
 
   main_context.info("Digging down or forward a block so we don't end up destroying the chest.")
@@ -1137,16 +1163,13 @@ end
 
 local ok, err = xpcall(main, debug.traceback)
 
--- Cleanup before dumping the log, in case the log is large (state file can be upwards of 500kb)
 main_context.debug("Cleaning up...")
 aid.clear_save()
-data_folder:delete(STATE_FILE)
+STATE_FILE:delete()
 
 if not ok then
   sleep() -- in case this was an infinite loop related error.
   main_context.fatal(err)
-  logging.dump_log(LOG_FILE)
-  main_context.info("Dumped log as", LOG_FILE)
 
   state.state = "errored"
 
