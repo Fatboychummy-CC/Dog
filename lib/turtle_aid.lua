@@ -1,7 +1,8 @@
 -- build 1
 
 local expect = require "cc.expect".expect
-local file_helper = require "file_helper":instanced("")
+local root_folder = require "filesystem":programPath()
+local data_folder = root_folder:at("data")
 
 ---@alias turtle_facing
 ---| 0 # North (negative Z direction)
@@ -56,7 +57,7 @@ local file_helper = require "file_helper":instanced("")
 ---@field y integer The y position relative to the turtle.
 ---@field z integer The z position relative to the turtle.
 
-local POSITION_CACHE = "position.dat"
+local POSITION_CACHE = data_folder:file("position_cache.dat")
 
 local EQUIPABLE_MODULE_LOOKUP = {
     ["minecraft:diamond_pickaxe"] = "pickaxe",
@@ -128,7 +129,7 @@ end
 --- Write movement information to the position cache file.
 ---@param movement movement The movement to save.
 local function write_movement(movement)
-  file_helper:serialize(POSITION_CACHE, { movement, aid.position, aid.facing, aid.fuel }, true)
+  POSITION_CACHE:serialize({movement, aid.position, aid.facing, aid.fuel}, {compact=true})
 end
 
 --- Test the last movement that was written to file and check if it went through.
@@ -159,7 +160,7 @@ end
 
 --- Load information from the position cache.
 function aid.load()
-  local data = file_helper:unserialize(POSITION_CACHE)
+  local data = POSITION_CACHE:unserialize()
 
   if data then
     local movement = data[1]
@@ -205,7 +206,7 @@ end
 
 --- Remove the position cache file, useful for when your program ends.
 function aid.clear_save()
-  file_helper:delete(POSITION_CACHE)
+  POSITION_CACHE:delete()
 end
 
 --- Select an item in the turtle's inventory.
