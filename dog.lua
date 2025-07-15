@@ -329,7 +329,6 @@ do
 
 
   --#region Options
-
   if parsed.options.exclude then
     local exclude_file = parsed.options.exclude:sub(1, 1) == "/" and root_folder:absolute(parsed.options.exclude):file()
       or root_folder:file(parsed.options.exclude)
@@ -427,10 +426,7 @@ do
       setup_context.warn("Skipped", n_skipped, "invalid entries in only file.")
     end
   end
-
   --#endregion Options
-
-
 end
 
 -- The following turtle states are used:
