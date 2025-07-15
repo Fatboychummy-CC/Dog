@@ -1,4 +1,4 @@
---- Doggy Aid: This module provides helper functions for dealing with peripherals and the inventory.
+--- Doggy Aid: This module provides helper functions for dealing with peripherals within the inventory.
 
 local expect = require "cc.expect".expect
 
@@ -14,6 +14,13 @@ local expect = require "cc.expect".expect
 ---@class Dog.Aid
 local Aid = {}
 
+--- Stores what is currently equipped on the left and right sides of the turtle.
+---@type string?, string?
+local left_side, right_side;
+
+--- Stores the last N peripheral call owners, so we can determine which peripheral is more likely to be used.
+local last_n_periph_call_owners = {}
+local last_n_n = 100 -- Number of calls to consider for least used peripheral.
 
 --- Maps the item ID to its peripheral data. Dog operates under the assumption that it only ever has a single peripheral of each type.
 ---@type table<string, Dog.Aid.PeripheralData>
@@ -61,6 +68,46 @@ end
 
 
 
+--- Inserts the ID of the peripheral that was called into the last N calls list.
+---@param id string The ID of the peripheral that was called.
+local function insert_last_n_periph_call_owner(id)
+  expect(1, id, "string")
+
+  if #last_n_periph_call_owners >= last_n_n then
+    table.remove(last_n_periph_call_owners, 1) -- Remove the oldest entry.
+  end
+  table.insert(last_n_periph_call_owners, id) -- Add the new entry.
+end
+
+
+
+--- Determines the side of the least used peripheral from the last N calls.
+---@return string? side The side of the least used peripheral.
+local function least_used_peripheral()
+  if not left_side then
+    return "left"
+  elseif not right_side then
+    return "right"
+  end
+
+  local lc, rc = 0, 0
+  for _, id in ipairs(last_n_periph_call_owners) do
+    if id == left_side then
+      lc = lc + 1
+    elseif id == right_side then
+      rc = rc + 1
+    end
+  end
+
+  if lc < rc then
+    return "left"
+  elseif rc < lc then
+    return "right"
+  end
+end
+
+
+
 --- Determines the first empty slot in the turtle's inventory.
 ---@return number? index The index of the first empty slot, or nil if no empty slot is found.
 function Aid.getFirstEmptySlot()
@@ -100,8 +147,10 @@ function Aid.unequipPeripheral(side)
   local index = Aid.selectFirstEmptySlot()
   if side == "left" then
     turtle.equipLeft()
+    left_side = nil
   else
     turtle.equipRight()
+    right_side = nil
   end
 
   -- Should automatically register that the peripheral is now in the inventory instead of on a side.
@@ -111,10 +160,28 @@ end
 
 
 
+--- Finds an item in the turtle's inventory by its ID.
+---@param id string The ID of the item to find.
+---@return integer? slot The slot number where the item is found, or nil if not found.
+function Aid.findItemInInventory(id)
+  expect(1, id, "string")
+
+  for i = 1, 16 do
+    local detail = turtle.getItemDetail(i)
+    if detail and detail.name == id then
+      return i
+    end
+  end
+end
+
+
+
 --- Equips the specified peripheral on the given side.
 ---@param id string The ID of the peripheral to equip.
 ---@param side "left"|"right"|nil The side to equip the peripheral on. Leave blank to auto-select the side.
-function Aid.equipPeripheral(id, side)
+---@param force boolean? If true, forces the peripheral to be equipped if no side is available, when no side is specified.
+---@return boolean success True if the peripheral was successfully equipped, false if it was already equipped on the correct side.
+function Aid.equipPeripheral(id, side, force)
   expect(1, id, "string")
   if not peripheral_data[id] then
     error("Bad argument #1: Peripheral ID '" .. id .. "' does not exist.", 2)
@@ -126,22 +193,58 @@ function Aid.equipPeripheral(id, side)
 
   local data = peripheral_data[id]
   if not data.present then
-    error("Peripheral '" .. id .. "' is not present in the turtle's inventory.", 2)
+    error("Peripheral '" .. id .. "' is not present in the turtle.", 2)
   end
 
+  -- Simple resolution: peripheral already equipped on a correct side.
   if side and data.side == side then
-    return -- Already equipped on the correct side.
+    if side == "left" then
+      left_side = id
+    else
+      right_side = id
+    end
+    return true -- Already equipped on the correct side.
   end
-
   if not side and data.side then
-    return -- Already equipped on any side.
+    if data.side == "left" then
+      left_side = id
+    else
+      right_side = id
+    end
+    return true -- Already equipped on any side.
   end
 
+  -- Less simple resolution: peripheral is equipped on a different side.
   if side and data.side ~= side then
     Aid.unequipPeripheral(data.side) -- Unequip from the current side.
+    Aid.equipPeripheral(id, side)
+    return true -- Now equipped on the correct side.
   end
 
+  -- If no side is specified, auto-select the side.
+  if not left_side then
+    -- Find the item in the inventory.
+    local slot = Aid.findItemInInventory(id)
+    if not slot then
+      ---@FIXME Try again, but only once, and also without rewriting this entire function.
+    end
+  elseif not right_side then
+    turtle.equipRight()
+    right_side = id
+    data.side = "right"
+    return true
+  end
 
+  -- Both sides taken, no side specified.
+  if force then
+    local least_used = least_used_peripheral()
+    if least_used then
+      Aid.unequipPeripheral(least_used) -- Unequip the least used peripheral.
+      return Aid.equipPeripheral(id, least_used)
+    end
+  end
+
+  return false -- No side available, and not forced to equip.
 end
 
 
@@ -172,4 +275,6 @@ function Aid.checkPeripherals()
   for id, data in pairs(peripheral_data) do
     data.present = false
   end
+
+  ---@FIXME Finish this method.
 end
