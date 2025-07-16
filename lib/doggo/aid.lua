@@ -180,7 +180,7 @@ end
 ---@param id string The ID of the peripheral to equip.
 ---@param side "left"|"right"|nil The side to equip the peripheral on. Leave blank to auto-select the side.
 ---@param force boolean? If true, forces the peripheral to be equipped if no side is available, when no side is specified.
----@return boolean success True if the peripheral was successfully equipped, false if it was already equipped on the correct side.
+---@return string? side The side on which the peripheral was equipped, or nil if it could not be equipped.
 function Aid.equipPeripheral(id, side, force)
   expect(1, id, "string")
   if not peripheral_data[id] then
@@ -203,7 +203,7 @@ function Aid.equipPeripheral(id, side, force)
     else
       right_side = id
     end
-    return true -- Already equipped on the correct side.
+    return side -- Already equipped on the correct side.
   end
   if not side and data.side then
     if data.side == "left" then
@@ -211,14 +211,14 @@ function Aid.equipPeripheral(id, side, force)
     else
       right_side = id
     end
-    return true -- Already equipped on any side.
+    return data.side -- Already equipped on any side.
   end
 
   -- Less simple resolution: peripheral is equipped on a different side.
   if side and data.side ~= side then
     Aid.unequipPeripheral(data.side) -- Unequip from the current side.
     Aid.equipPeripheral(id, side)
-    return true -- Now equipped on the correct side.
+    return side -- Now equipped on the correct side.
   end
 
   -- If no side is specified, auto-select the side.
@@ -232,7 +232,7 @@ function Aid.equipPeripheral(id, side, force)
     turtle.equipRight()
     right_side = id
     data.side = "right"
-    return true
+    return side
   end
 
   -- Both sides taken, no side specified.
@@ -244,7 +244,7 @@ function Aid.equipPeripheral(id, side, force)
     end
   end
 
-  return false -- No side available, and not forced to equip.
+  return nil -- No side available, and not forced to equip.
 end
 
 
@@ -272,11 +272,45 @@ end
 
 --- Checks the inventory for all available peripherals, updating the internal storage of peripheral data.
 function Aid.checkPeripherals()
-  for id, data in pairs(peripheral_data) do
+  for _, data in pairs(peripheral_data) do
     data.present = false
   end
 
-  ---@FIXME Finish this method.
+  --- Registers a peripheral based on the item stack.
+  ---@param item ccTweaked.peripheral.item|ccTweaked.turtle.turtleDetails? item The item stack to register.
+  ---@param slot integer? The slot number of the item stack, if applicable.
+  ---@param side string? The side of the turtle where the peripheral is located, if applicable.
+  local function register(item, slot, side)
+    if not item then return end -- Ignore nil items.
+
+    -- Ensure the peripheral is equipped and equipable.
+    if item.name and peripheral_data[item.name] then
+      local data = peripheral_data[item.name]
+      data.present = true
+      data.slot = slot
+      data.side = side
+
+      local side_equipped = Aid.equipPeripheral(item.name, nil, true)
+      if not side_equipped then
+        error("Cannot check peripherals, inventory full or other issue with equipping '" .. data.short_name .. "'.", 2)
+      end
+
+      if data.wrappable then
+        data.methods = peripheral.getMethods(side_equipped) -- Get the methods available on the peripheral.
+      else
+        data.methods = nil -- Not wrappable, so no methods.
+      end
+    end
+  end
+
+  -- First, check what's on the sides.
+  register(turtle.getEquippedLeft(), nil, "left")
+  register(turtle.getEquippedRight(), nil, "right")
+
+  -- Then, each slot inventory slot.
+  for i = 1, 16 do
+    register(turtle.getItemDetail(i) --[[@as ccTweaked.turtle.turtleDetails?]], i) -- Check each inventory slot.
+  end
 end
 
 
