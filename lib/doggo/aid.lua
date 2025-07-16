@@ -227,12 +227,15 @@ function Aid.equipPeripheral(id, side, force)
     local slot = Aid.findItemInInventory(id)
     if not slot then
       ---@FIXME Try again, but only once, and also without rewriting this entire function.
+      error("This specific case is not yet implemented. This is likely not a YOU issue.", 2)
     end
   elseif not right_side then
-    turtle.equipRight()
-    right_side = id
-    data.side = "right"
-    return side
+    --- Find the item in the inventory.
+    local slot = Aid.findItemInInventory(id)
+    if not slot then
+      ---@FIXME Try again, but only once, and also without rewriting this entire function.
+      error("This specific case is not yet implemented. This is likely not a YOU issue.", 2)
+    end
   end
 
   -- Both sides taken, no side specified.

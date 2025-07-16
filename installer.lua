@@ -6,6 +6,7 @@ local to_get = {
   "lib/filesystem.lua:filesystem.lua",
   "lib/minilogger.lua:minilogger.lua",
   "lib/simple_argparse.lua:simple_argparse.lua",
+  "lib/parallelism_handler.lua:parallelism_handler.lua",
 }
 local program_name = "Dog"
 local pinestore_id = nil -- Set this to the ID of the pinestore project if you wish to note to pinestore that a download has occurred.
