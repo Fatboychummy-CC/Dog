@@ -360,3 +360,26 @@ end
 
 
 
+--- Adds a peripheral entry to the peripheral data, so that it can be used later.
+--- Only accepts wrappable peripherals.
+---@param id string The ID of the peripheral to add.
+---@param short_name string The short name of the peripheral.
+function Aid.addPeripheral(id, short_name)
+  expect(1, id, "string")
+  expect(2, short_name, "string")
+
+  if peripheral_data[id] then
+    return
+  end
+
+  peripheral_data[id] = {
+    short_name = short_name,
+    wrappable = true,
+    methods = {},
+    present = false,
+  }
+end
+
+
+
+return Aid
