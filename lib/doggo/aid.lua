@@ -3,7 +3,7 @@
 local expect = require "cc.expect".expect
 
 --- Data structure for peripheral information.
----@class Dog.Aid.PeripheralData
+---@class Doggo.Aid.PeripheralData
 ---@field short_name string The short name of the peripheral.
 ---@field wrappable boolean? Indicates if the peripheral is wrappable.
 ---@field methods table<string, true>? A lookup table of methods available on the peripheral. Only available if the peripheral is present and wrappable.
@@ -11,7 +11,7 @@ local expect = require "cc.expect".expect
 ---@field slot integer? The inventory slot where the peripheral is located, if applicable.
 ---@field present boolean Indicates if the peripheral is present in the inventory or on one of the turtle's sides.
 
----@class Dog.Aid
+---@class Doggo.Aid
 local Aid = {}
 
 --- Stores what is currently equipped on the left and right sides of the turtle.
@@ -23,20 +23,20 @@ local last_n_periph_call_owners = {}
 local last_n_n = 100 -- Number of calls to consider for least used peripheral.
 
 --- Maps the item ID to its peripheral data. Dog operates under the assumption that it only ever has a single peripheral of each type.
----@type table<string, Dog.Aid.PeripheralData>
+---@type table<string, Doggo.Aid.PeripheralData>
 local peripheral_data = {
   ["plethora:block_scanner"] = {
-    short_name = "plethora:block_scanner",
+    short_name = "block_scanner",
     present = false,
     wrappable = true,
   },
   ["advancedperipherals:geoscanner"] = {
-    short_name = "advancedperipherals:geoscanner",
+    short_name = "geoscanner",
     present = false,
     wrappable = true,
   },
   ["minecraft:diamond_pickaxe"] = {
-    short_name = "minecraft:diamond_pickaxe",
+    short_name = "pickaxe",
     present = false,
     wrappable = false,
   }
@@ -99,11 +99,11 @@ local function least_used_peripheral()
     end
   end
 
-  if lc < rc then
-    return "left"
-  elseif rc < lc then
+  if rc < lc then
     return "right"
   end
+
+  return "left"
 end
 
 
@@ -278,3 +278,85 @@ function Aid.checkPeripherals()
 
   ---@FIXME Finish this method.
 end
+
+
+
+--- Determines which peripheral has a given method.
+--- If multiple peripherals have the same method, will return whichever it comes across first.
+---@param method string The method to check for.
+---@return string? id The ID of the peripheral that has the method, or nil if no peripheral has the method.
+function Aid.getPeripheralWithMethod(method)
+  expect(1, method, "string")
+
+  for id, data in pairs(peripheral_data) do
+    if data.present and data.wrappable and (data.methods and data.methods[method]) then
+      return id -- Found a peripheral with the method.
+    end
+  end
+end
+
+
+
+--- Calls a method on a peripheral, with any needed special cases handled.
+---@param object Doggo.Aid.PeripheralData The peripheral data object to call the method on.
+---@param method string The method to call on the peripheral.
+---@param ... any The arguments to pass to the method.
+---@return ... any The return values from the peripheral call, or `nil, "error message"` if the call failed.
+local function internal_call(object, method, ...)
+  expect(1, object, "table")
+  expect(2, method, "string")
+
+  if object.short_name == "pickaxe" then
+    insert_last_n_periph_call_owner(object.short_name) -- Record the peripheral that was called.
+    if not object.side then
+      return nil, "Peripheral '" .. object.short_name .. "' is not equipped on any side."
+    end
+    return turtle.dig(object.side) -- Special case for pickaxe, since it doesn't have a peripheral.
+  end
+
+  if not object.wrappable then
+    return nil, "Peripheral '" .. object.short_name .. "' is not wrappable. Don't know what to do with it!"
+  end
+
+  if not object.side then
+    return nil, "Peripheral '" .. object.short_name .. "' is not equipped on any side."
+  end
+
+  return peripheral.call(object.side, method, ...)
+end
+
+
+
+--- Calls a method on any of the present peripherals, auto-equipping the peripheral if necessary.
+--- Works essentially the same as `peripheral.call`, but does not need the peripheral's name, and can auto-equip the peripheral to make the call.
+---@param method string The method to call.
+---@param ... any The arguments to pass to the method.
+---@return ... any The return values from the peripheral call, or `nil, "error message" if the call failed.
+function Aid.call(method, ...)
+  expect(1, method, "string")
+
+  local id = Aid.getPeripheralWithMethod(method)
+  if not id then
+    return nil, "No peripheral with method '" .. method .. "' found."
+  end
+
+  local data = peripheral_data[id]
+  if not data.present then
+    return nil, "Peripheral '" .. id .. "' is not present."
+  end
+
+  if data.side then -- Already equipped!
+    return internal_call(data, method, ...)
+  end
+
+  -- Not equipped, so we need to equip it.
+  Aid.equipPeripheral(id, nil, true) -- Auto-select the side and force equip.
+  if not data.side then
+    return nil, "Failed to equip peripheral '" .. id .. "'"
+  end
+
+  return internal_call(data, method, ...)
+end
+
+
+
