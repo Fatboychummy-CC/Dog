@@ -1,9 +1,9 @@
---- Doggy Aid: This module provides helper functions for dealing with peripherals within the inventory.
+--- Doggy Equipment: This module provides helper functions for dealing with peripherals within the inventory.
 
 local expect = require "cc.expect".expect
 
 --- Data structure for peripheral information.
----@class Doggo.Aid.PeripheralData
+---@class Doggo.Equipment.PeripheralData
 ---@field short_name string The short name of the peripheral.
 ---@field wrappable boolean? Indicates if the peripheral is wrappable.
 ---@field methods table<string, true>? A lookup table of methods available on the peripheral. Only available if the peripheral is present and wrappable.
@@ -11,8 +11,8 @@ local expect = require "cc.expect".expect
 ---@field slot integer? The inventory slot where the peripheral is located, if applicable.
 ---@field present boolean Indicates if the peripheral is present in the inventory or on one of the turtle's sides.
 
----@class Doggo.Aid
-local Aid = {}
+---@class Doggo.Equipment
+local Equipment = {}
 
 --- Stores what is currently equipped on the left and right sides of the turtle.
 ---@type string?, string?
@@ -23,7 +23,7 @@ local last_n_periph_call_owners = {}
 local last_n_n = 100 -- Number of calls to consider for least used peripheral.
 
 --- Maps the item ID to its peripheral data. Dog operates under the assumption that it only ever has a single peripheral of each type.
----@type table<string, Doggo.Aid.PeripheralData>
+---@type table<string, Doggo.Equipment.PeripheralData>
 local peripheral_data = {
   ["plethora:block_scanner"] = {
     short_name = "block_scanner",
@@ -49,18 +49,18 @@ do
   -- Since we can't use the method directly, we have to unequip, check, then re-equip the peripheral.
 
   turtle.getEquippedLeft = turtle.getEquippedLeft or function()
-    local id = Aid.checkPeripheralAt(Aid.unequipPeripheral("left"))
+    local id = Equipment.checkPeripheralAt(Equipment.unequipPeripheral("left"))
 
     if id then
-      Aid.equipPeripheral(id, "left")
+      Equipment.equipPeripheral(id, "left")
     end
   end
   turtle.getEquippedRight = turtle.getEquippedRight or function()
-    Aid.unequipPeripheral("right")
-    local id = Aid.checkPeripheralAt(Aid.unequipPeripheral("left"))
+    Equipment.unequipPeripheral("right")
+    local id = Equipment.checkPeripheralAt(Equipment.unequipPeripheral("left"))
 
     if id then
-      Aid.equipPeripheral(id, "right")
+      Equipment.equipPeripheral(id, "right")
     end
   end
 end
@@ -110,7 +110,7 @@ end
 
 --- Determines the first empty slot in the turtle's inventory.
 ---@return number? index The index of the first empty slot, or nil if no empty slot is found.
-function Aid.getFirstEmptySlot()
+function Equipment.getFirstEmptySlot()
   for i = 1, 16 do
     if turtle.getItemCount(i) == 0 then
       return i
@@ -122,8 +122,8 @@ end
 
 --- Selects the first empty slot in the turtle's inventory.
 ---@return integer index The index of the first empty slot.
-function Aid.selectFirstEmptySlot()
-  local index = Aid.getFirstEmptySlot()
+function Equipment.selectFirstEmptySlot()
+  local index = Equipment.getFirstEmptySlot()
   if index then
     turtle.select(index)
   else
@@ -138,13 +138,13 @@ end
 --- Unequips the peripheral from the specified side, if it is present.
 ---@param side "left"|"right" The side from which to unequip the peripheral.
 ---@return integer index The index of the slot where the peripheral was unequipped.
-function Aid.unequipPeripheral(side)
+function Equipment.unequipPeripheral(side)
   expect(1, side, "string")
   if side ~= "left" and side ~= "right" then
     error("Bad argument #1: Expected 'left' or 'right', got " .. side, 2)
   end
 
-  local index = Aid.selectFirstEmptySlot()
+  local index = Equipment.selectFirstEmptySlot()
   if side == "left" then
     turtle.equipLeft()
     left_side = nil
@@ -154,7 +154,7 @@ function Aid.unequipPeripheral(side)
   end
 
   -- Should automatically register that the peripheral is now in the inventory instead of on a side.
-  Aid.checkPeripheralAt(index)
+  Equipment.checkPeripheralAt(index)
   return index
 end
 
@@ -163,7 +163,7 @@ end
 --- Finds an item in the turtle's inventory by its ID.
 ---@param id string The ID of the item to find.
 ---@return integer? slot The slot number where the item is found, or nil if not found.
-function Aid.findItemInInventory(id)
+function Equipment.findItemInInventory(id)
   expect(1, id, "string")
 
   for i = 1, 16 do
@@ -181,7 +181,7 @@ end
 ---@param side "left"|"right"|nil The side to equip the peripheral on. Leave blank to auto-select the side.
 ---@param force boolean? If true, forces the peripheral to be equipped if no side is available, when no side is specified.
 ---@return string? side The side on which the peripheral was equipped, or nil if it could not be equipped.
-function Aid.equipPeripheral(id, side, force)
+function Equipment.equipPeripheral(id, side, force)
   expect(1, id, "string")
   if not peripheral_data[id] then
     error("Bad argument #1: Peripheral ID '" .. id .. "' does not exist.", 2)
@@ -216,22 +216,22 @@ function Aid.equipPeripheral(id, side, force)
 
   -- Less simple resolution: peripheral is equipped on a different side.
   if side and data.side ~= side then
-    Aid.unequipPeripheral(data.side) -- Unequip from the current side.
-    Aid.equipPeripheral(id, side)
+    Equipment.unequipPeripheral(data.side) -- Unequip from the current side.
+    Equipment.equipPeripheral(id, side)
     return side -- Now equipped on the correct side.
   end
 
   -- If no side is specified, auto-select the side.
   if not left_side then
     -- Find the item in the inventory.
-    local slot = Aid.findItemInInventory(id)
+    local slot = Equipment.findItemInInventory(id)
     if not slot then
       ---@FIXME Try again, but only once, and also without rewriting this entire function.
       error("This specific case is not yet implemented. This is likely not a YOU issue.", 2)
     end
   elseif not right_side then
     --- Find the item in the inventory.
-    local slot = Aid.findItemInInventory(id)
+    local slot = Equipment.findItemInInventory(id)
     if not slot then
       ---@FIXME Try again, but only once, and also without rewriting this entire function.
       error("This specific case is not yet implemented. This is likely not a YOU issue.", 2)
@@ -242,8 +242,8 @@ function Aid.equipPeripheral(id, side, force)
   if force then
     local least_used = least_used_peripheral()
     if least_used then
-      Aid.unequipPeripheral(least_used) -- Unequip the least used peripheral.
-      return Aid.equipPeripheral(id, least_used)
+      Equipment.unequipPeripheral(least_used) -- Unequip the least used peripheral.
+      return Equipment.equipPeripheral(id, least_used)
     end
   end
 
@@ -255,7 +255,7 @@ end
 --- Checks if a peripheral is present in the target slot. Updates the peripheral data accordingly.
 ---@param slot integer The slot number to check.
 ---@return string? id The ID of the peripheral if present, or nil if not.
-function Aid.checkPeripheralAt(slot)
+function Equipment.checkPeripheralAt(slot)
   expect(1, slot, "number")
 
   local detail = turtle.getItemDetail(slot)
@@ -274,7 +274,7 @@ end
 
 
 --- Checks the inventory for all available peripherals, updating the internal storage of peripheral data.
-function Aid.checkPeripherals()
+function Equipment.checkPeripherals()
   for _, data in pairs(peripheral_data) do
     data.present = false
   end
@@ -293,7 +293,7 @@ function Aid.checkPeripherals()
       data.slot = slot
       data.side = side
 
-      local side_equipped = Aid.equipPeripheral(item.name, nil, true)
+      local side_equipped = Equipment.equipPeripheral(item.name, nil, true)
       if not side_equipped then
         error("Cannot check peripherals, inventory full or other issue with equipping '" .. data.short_name .. "'.", 2)
       end
@@ -322,7 +322,7 @@ end
 --- If multiple peripherals have the same method, will return whichever it comes across first.
 ---@param method string The method to check for.
 ---@return string? id The ID of the peripheral that has the method, or nil if no peripheral has the method.
-function Aid.getPeripheralWithMethod(method)
+function Equipment.getPeripheralWithMethod(method)
   expect(1, method, "string")
 
   for id, data in pairs(peripheral_data) do
@@ -335,7 +335,7 @@ end
 
 
 --- Calls a method on a peripheral, with any needed special cases handled.
----@param object Doggo.Aid.PeripheralData The peripheral data object to call the method on.
+---@param object Doggo.Equipment.PeripheralData The peripheral data object to call the method on.
 ---@param method string The method to call on the peripheral.
 ---@param ... any The arguments to pass to the method.
 ---@return ... any The return values from the peripheral call, or `nil, "error message"` if the call failed.
@@ -369,10 +369,10 @@ end
 ---@param method string The method to call.
 ---@param ... any The arguments to pass to the method.
 ---@return ... any The return values from the peripheral call, or `nil, "error message" if the call failed.
-function Aid.call(method, ...)
+function Equipment.call(method, ...)
   expect(1, method, "string")
 
-  local id = Aid.getPeripheralWithMethod(method)
+  local id = Equipment.getPeripheralWithMethod(method)
   if not id then
     return nil, "No peripheral with method '" .. method .. "' found."
   end
@@ -387,7 +387,7 @@ function Aid.call(method, ...)
   end
 
   -- Not equipped, so we need to equip it.
-  Aid.equipPeripheral(id, nil, true) -- Auto-select the side and force equip.
+  Equipment.equipPeripheral(id, nil, true) -- Auto-select the side and force equip.
   if not data.side then
     return nil, "Failed to equip peripheral '" .. id .. "'"
   end
@@ -401,7 +401,7 @@ end
 --- Only accepts wrappable peripherals.
 ---@param id string The ID of the peripheral to add.
 ---@param short_name string The short name of the peripheral.
-function Aid.addPeripheral(id, short_name)
+function Equipment.addPeripheral(id, short_name)
   expect(1, id, "string")
   expect(2, short_name, "string")
 
@@ -419,4 +419,4 @@ end
 
 
 
-return Aid
+return Equipment

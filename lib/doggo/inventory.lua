@@ -3,7 +3,7 @@
 local expect = require "cc.expect".expect
 local ph = require "parallelism_handler"
 local movement = require "doggo.movement"
-local aid = require "doggo.aid"
+local equipment = require "doggo.equipment"
 
 ---@class Doggo.Inventory.CachedItem
 ---@field id string The item ID.
@@ -437,13 +437,13 @@ end
 --- Crafts an item using the given recipe with whatever the turtle has in its inventory. Will fail if the turtle has any extra items.
 ---@param recipe Doggo.Inventory.CraftingRecipe The recipe to use for crafting.
 ---@param count integer? The number of items to craft. If nil, crafts as many as possible.
----@param only_craft_count boolean? If true, only crafts the exact number of items specified by `count`. If requesting 5 items, but only enough to craft 3, will not craft any items.
+---@param only_craft_exact boolean? If true, only crafts the exact number of items specified by `count`. If requesting 5 items, but only enough to craft 3, will not craft any items.
 ---@return integer crafted The number of items successfully crafted.
-function Inventory.craft(recipe, count, only_craft_count)
+function Inventory.craft(recipe, count, only_craft_exact)
   expect(1, recipe, "table")
   validate_recipe(recipe)
   expect(2, count, "number", "nil")
-  expect(3, only_craft_count, "boolean", "nil")
+  expect(3, only_craft_exact, "boolean", "nil")
   if count and count <= 0 then
     return 0
   end
@@ -476,8 +476,9 @@ function Inventory.craft(recipe, count, only_craft_count)
     return 0 -- Not enough items to craft anything.
   end
 
+  -- Check if we can craft the requested amount, and update the count accordingly (if `only_craft_exact` is false).
   if count and max_craftable < count then
-    if only_craft_count then
+    if only_craft_exact then
       return 0 -- Not enough items to craft the requested amount.
     else
       count = max_craftable -- Adjust to the maximum we can craft.
@@ -486,30 +487,37 @@ function Inventory.craft(recipe, count, only_craft_count)
     count = max_craftable -- Craft as many as possible.
   end
 
-
-
-  ---@TODO Check if any additional items are in the turtle's inventory (return 0)
   ---@TODO Craft.
+
+
 end
 
 
 
 --- Crafts an item using the given recipe, but interfaced with a chest to find items that are needed.
+---@param interface Doggo.InventoryInterface The interface to use for finding and storing items.
 ---@param recipe Doggo.Inventory.CraftingRecipe The recipe to use for crafting.
 ---@param count integer? The number of items to craft. If nil, crafts as many as possible.
----@param interface Doggo.InventoryInterface The interface to use for finding items.
+---@param only_craft_exact boolean? If true, only crafts the exact number of items specified by `count`.
 ---@return integer crafted The number of items successfully crafted.
-function Inventory.interfacedCraft(recipe, count, interface)
+function Inventory.interfacedCraft(interface, recipe, count, only_craft_exact)
   expect(1, recipe, "table")
   validate_recipe(recipe)
   expect(2, count, "number", "nil")
   expect(3, interface, "table")
+  expect(4, only_craft_exact, "boolean", "nil")
 
   if interface.isClosed() then
     error("Interface is closed.", 2)
   end
 
   local costs = Inventory.getRecipeCosts(recipe)
+
+  ---@TODO Locate items in the interface and turtle's inventory.
+  ---@TODO Check if we can craft the requested amount.
+  ---@TODO Collect items from the interface, drop unneeded items into the interface.
+  ---@TODO Call `Inventory.craft` to actually craft the item.
+  ---@TODO If we need to craft more still, recursively call self with `count` adjusted.
 end
 
 
