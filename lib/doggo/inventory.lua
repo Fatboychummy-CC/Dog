@@ -6,8 +6,8 @@ local movement = require "doggo.movement"
 local equipment = require "doggo.equipment"
 
 ---@class Doggo.Inventory.CachedItem
----@field id string The item ID.
----@field name string The full name of the item.
+---@field name string The item ID.
+---@field displayName string The full name of the item.
 ---@field nbt string? The NBT hash of the item, if applicable.
 ---@field max_count integer The maximum stack size of the item.
 
@@ -29,6 +29,15 @@ local equipment = require "doggo.equipment"
 ---@field recipe string[]
 ---@field items table<string, string>
 
+---@class Doggo.Inventory.SimpleItem
+---@field name string The item ID.
+---@field count integer The number of items in the stack.
+
+---@class Doggo.Inventory.CraftingClaim
+---@field name string The name of the item being claimed.
+---@field count integer The number of items in the slot being claimed.
+---@field claims integer[] The slots that are being pulled from for this slot (key), and the amount being pulled (value).
+
 ---@class Doggo.Inventory
 local Inventory = {}
 
@@ -36,6 +45,10 @@ local Inventory = {}
 --- i.e: ["minecraft:enchanted_book:<NBT_HASH>"] = "Protection IV"
 ---@type table<string, Doggo.Inventory.CachedItem>
 local item_cache = {}
+
+--- Holds a cache of items inside the turtle's inventory.
+---@type ccTweaked.turtle.turtleDetails[]
+local inventory_cache = {}
 
 
 
@@ -63,8 +76,8 @@ local function cache_item(item)
   end
 
   item_cache[id] = {
-    id = item.name,
-    name = item.displayName,
+    name = item.name,
+    displayName = item.displayName,
     nbt = item.nbt,
     max_count = item.maxCount,
   }
@@ -75,14 +88,13 @@ end
 --- Returns every item in the turtle's inventory.
 ---@return ccTweaked.turtle.turtleDetails[] items A list with basic information about every item in the turtle's inventory.
 function Inventory.getItems()
-  ---@type ccTweaked.turtle.turtleDetails[]
-  local items = {}
+  inventory_cache = {} -- Reset the cache.
 
   for i = 1, 16 do
-    items[i] = turtle.getItemDetail(i) --[[@as ccTweaked.turtle.turtleDetails?]]
+    inventory_cache[i] = turtle.getItemDetail(i) --[[@as ccTweaked.turtle.turtleDetails?]]
   end
 
-  return items
+  return inventory_cache
 end
 
 
@@ -434,6 +446,144 @@ end
 
 
 
+--- Moves an item from one slot to another, preserving the turtle item cache.
+---@param from_slot integer The slot to move the item from.
+---@param to_slot integer The slot to move the item to.
+---@param limit integer? The maximum number of items to move. If nil, moves the entire stack.
+---@return integer moved The number of items successfully moved.
+function Inventory.moveItems(from_slot, to_slot, limit)
+  expect(1, from_slot, "number")
+  expect(2, to_slot, "number")
+  expect(3, limit, "number", "nil")
+
+  if from_slot == to_slot then
+    return 0 -- No need to move.
+  end
+
+  local from_item = inventory_cache[from_slot]
+  local to_item = inventory_cache[to_slot]
+
+  if from_item.name ~= to_item.name then
+    -- If the items are different, we can't move them.
+    return 0
+  end
+
+  turtle.select(from_slot)
+  local success = turtle.transferTo(to_slot, limit)
+
+  if not success then
+    return 0
+  end
+
+  -- Update the cache
+  Inventory.getItems()
+
+  -- Check how many items were actually moved.
+  if not inventory_cache[from_slot] then
+    -- The entire stack was moved.
+    return from_item.count
+  elseif not inventory_cache[to_slot] then
+    -- This case shouldn't be possible, but would mean we moved 0 items.
+    return 0
+  end
+
+  -- We moved *some* items, subtract the current count from the original.
+  return from_item.count - inventory_cache[from_slot].count
+end
+
+
+
+--- Gets the next available slot in the turtle's inventory.
+---@return integer? slot The next available slot, or nil if no slots are available.
+function Inventory.availableSlot()
+  for i = 1, 16 do
+    if not inventory_cache[i] then
+      return i -- Found an empty slot.
+    end
+  end
+  return nil -- No empty slots found.
+end
+
+
+
+--- Forcefully moves an item from one slot to another, moving anything that is in the way to the next available slot.
+---
+--- - If the `to_slot` is occupied by a *different* item, moves it to the next available slot.
+--- - If the `to_slot` is occupied by the same item, moves *overflow* to the next available slot.
+---@param from_slot integer The slot to move the item from.
+---@param to_slot integer The slot to move the item to.
+---@param limit integer? The maximum number of items to move. If nil, moves the entire stack.
+---@param no_overflow boolean? If true, does not move overflow items to the next available slot -- Leaves them in the `from_slot`.
+---@return integer moved The number of items successfully moved.
+function Inventory.forceMoveItems(from_slot, to_slot, limit, no_overflow)
+  expect(1, from_slot, "number")
+  expect(2, to_slot, "number")
+  expect(3, limit, "number", "nil")
+  if from_slot == to_slot then
+    return 0 -- No need to move.
+  end
+  local from_item = inventory_cache[from_slot]
+  local to_item = inventory_cache[to_slot]
+  if not from_item then
+    return 0
+  end
+  if not to_item then
+    -- If the destination slot is empty, just move the item.
+    return Inventory.moveItems(from_slot, to_slot, limit)
+  end
+  if from_item.name == to_item.name then
+    -- If the items are the same, we can move them directly then handle overflow.
+    local moved = Inventory.moveItems(from_slot, to_slot, limit)
+    if moved < limit and not no_overflow then
+      -- Move the overflow
+      local overflow_limit = limit and (limit - moved) or nil
+      return moved + Inventory.moveItems(from_slot, Inventory.availableSlot() or to_slot, overflow_limit)
+    end
+    return moved
+  end
+
+  -- Items are different, we can only move to the overflow.
+  if not no_overflow then
+    -- Move the item in the `to_slot` to the next available slot.
+    local next_slot = Inventory.availableSlot()
+    if next_slot then
+      return Inventory.moveItems(to_slot, next_slot)
+    end
+  end
+
+  -- We are unable to move the item if we reach this point.
+  return 0
+end
+
+
+
+--- Locates an item in the turtle's inventory.
+---@param id string The item ID to locate.
+---@return ... integer slots The slots where the item is located.
+function Inventory.locateItem(id)
+  expect(1, id, "string")
+
+  local slots = {}
+  for slot, item in pairs(inventory_cache) do
+    if get_item_id(item) == id then
+      table.insert(slots, slot)
+    end
+  end
+
+  return table.unpack(slots)
+end
+
+
+
+--- "Defrags" the turtle's inventory by moving items around to fill partially filled slots.
+function Inventory.defrag()
+  local items = Inventory.getItems()
+
+  ---@TODO Finish this function.
+end
+
+
+
 --- Crafts an item using the given recipe with whatever the turtle has in its inventory. Will fail if the turtle has any extra items.
 ---@param recipe Doggo.Inventory.CraftingRecipe The recipe to use for crafting.
 ---@param count integer? The number of items to craft. If nil, crafts as many as possible.
@@ -521,4 +671,32 @@ function Inventory.interfacedCraft(interface, recipe, count, only_craft_exact)
 end
 
 
----@TODO Crafting interface.
+
+--- Listens for inventory changes and updates the inventory cache.
+--- Needs to be ran in parallel.
+function Inventory.listen()
+  while true do
+    os.pullEvent("turtle_inventory")
+    Inventory.getDetailedItems()
+  end
+end
+
+
+
+--- Periodically rescans the inventory and updates the inventory cache.
+--- Needs to be ran in parallel.
+---@param period number? The time in seconds between rescans. Defaults to 5 seconds.
+function Inventory.periodicRescan(period)
+  expect(1, period, "number", "nil")
+  period = period or 5
+
+  while true do
+    os.sleep(period)
+    Inventory.getDetailedItems()
+  end
+end
+
+
+
+Inventory.getDetailedItems()
+return Inventory
