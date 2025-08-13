@@ -16,6 +16,16 @@
 ---| "turn_right" # The turtle turned right.
 ---| "done" # The turtle has finished its current action.
 
+---@alias Doggo.Movement.AxisOrders
+---| "xyz"
+---| "yxz"
+---| "yzx"
+---| "xzy"
+---| "zyx"
+---| "zxy"
+
+local expect = require "cc.expect".expect
+
 local data_dir = require "filesystem":programPath():at("data")
 local state_file = data_dir:file("doggo_movement_state.lson")
 
@@ -219,5 +229,136 @@ function Movement.face(orientation)
 end
 
 
+
+local function align_x(target_x)
+  if Movement.state.position.x == target_x then
+    return
+  end
+
+  if Movement.state.position.x < target_x then
+    -- Need to move +X
+    Movement.face(Movement.Orientation.PX)
+  else
+    -- Need to move -X
+    Movement.face(Movement.Orientation.NX)
+  end
+
+  while Movement.state.position.x ~= target_x do
+    Movement.turtle.forward()
+  end
+end
+
+
+
+local function align_y(target_y)
+  if Movement.state.position.y == target_y then
+    return
+  end
+
+  while Movement.state.position.y < target_y do
+    Movement.turtle.up()
+  end
+
+  while Movement.state.position.y > target_y do
+    Movement.turtle.down()
+  end
+end
+
+
+
+local function align_z(target_z)
+  if Movement.state.position.z == target_z then
+    return
+  end
+
+  if Movement.state.position.z < target_z then
+    -- Need to move +Z (South)
+    Movement.face(Movement.Orientation.PZ)
+  else
+    -- Need to move -Z (North)
+    Movement.face(Movement.Orientation.NZ)
+  end
+
+  while Movement.state.position.z ~= target_z do
+    Movement.turtle.forward()
+  end
+end
+
+
+
+--- Moves the turtle to a specified position.
+---@param x integer The X coordinate of the position to move to.
+---@param y integer The Y coordinate of the position to move to.
+---@param z integer The Z coordinate of the position to move to.
+---@param axis_order Doggo.Movement.AxisOrders? The order in which to align axis, default `xyz`.
+function Movement.moveto(x, y, z, axis_order)
+  expect(1, x, "number")
+  expect(2, y, "number")
+  expect(3, z, "number")
+  expect(4, axis_order, "string", "nil")
+  axis_order = axis_order or "xyz"
+
+  if axis_order then
+    if #axis_order ~= 3 then
+      error("Bad argument #4 to moveto: Expected a string of length 3, got " .. #axis_order, 2)
+    end
+
+    if not axis_order:match("^[xyz]+$") then
+      error("Bad argument #4 to moveto: Expected a string containing only 'x', 'y', and 'z', got " .. axis_order, 2)
+    end
+
+    local axes = {}
+    for _, axis in axis_order:gmatch(".") do
+      if not axes[axis] then
+        axes[axis] = true
+      else
+        error("Bad argument #4 to moveto: Duplicate axis '" .. axis .. "' in order " .. axis_order, 2)
+      end
+    end
+  end
+
+  for _, axis in axis_order:gmatch(".") do
+    if axis == "x" then
+      align_x(x)
+    elseif axis == "y" then
+      align_y(y)
+    elseif axis == "z" then
+      align_z(z)
+    else
+      error("Invalid axis in order: " .. axis, 2)
+    end
+  end
+end
+
+
+
+--- Attempts to create a path to a specified position.
+---@param x integer The X coordinate of the position to move to.
+---@param y integer The Y coordinate of the position to move to.
+---@param z integer The Z coordinate of the position to move to.
+---@param map Doggo.Mapping.CollisionMap The map to use for pathfinding.
+---@param depth_limit integer? The maximum depth to search for a path (Default 100)
+---@return Doggo.Movement.Path? path The found path, or nil if no path was found.
+---@return ccTweaked.Vector? closest_position The closest position found during pathfinding, if pathing failed.
+function Movement.pathfind(x, y, z, map, depth_limit)
+  expect(1, x, "number")
+  expect(2, y, "number")
+  expect(3, z, "number")
+  expect(4, map, "table")
+  expect(5, depth_limit, "number", "nil")
+  depth_limit = depth_limit or 100
+
+  ---@TODO Implement A* pathfinding algorithm here.
+end
+
+
+
+--- Follows a path created by `Movement.pathfind`.
+--- @param path Doggo.Movement.Path The path to follow.
+function Movement.followPath(path)
+  expect(1, path, "table")
+
+  ---@TODO Implement this after we determine what a path will look like.
+end
 
 return Movement
