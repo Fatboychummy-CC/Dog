@@ -332,29 +332,8 @@ end
 
 
 
---- Attempts to create a path to a specified position.
----@param x integer The X coordinate of the position to move to.
----@param y integer The Y coordinate of the position to move to.
----@param z integer The Z coordinate of the position to move to.
----@param map Doggo.Mapping.CollisionMap The map to use for pathfinding.
----@param depth_limit integer? The maximum depth to search for a path (Default 100)
----@return Doggo.Movement.Path? path The found path, or nil if no path was found.
----@return ccTweaked.Vector? closest_position The closest position found during pathfinding, if pathing failed.
-function Movement.pathfind(x, y, z, map, depth_limit)
-  expect(1, x, "number")
-  expect(2, y, "number")
-  expect(3, z, "number")
-  expect(4, map, "table")
-  expect(5, depth_limit, "number", "nil")
-  depth_limit = depth_limit or 100
-
-  ---@TODO Implement A* pathfinding algorithm here.
-end
-
-
-
 --- Follows a path created by `Movement.pathfind`.
---- @param path Doggo.Movement.Path The path to follow.
+--- @param path Doggo.Pathfinding.Path The path to follow.
 function Movement.followPath(path)
   expect(1, path, "table")
 
