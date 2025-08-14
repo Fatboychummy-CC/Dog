@@ -291,7 +291,7 @@ end
 ---@param y integer The Y coordinate of the position to move to.
 ---@param z integer The Z coordinate of the position to move to.
 ---@param axis_order Doggo.Movement.AxisOrders? The order in which to align axis, default `xyz`.
-function Movement.moveto(x, y, z, axis_order)
+function Movement.moveTo(x, y, z, axis_order)
   expect(1, x, "number")
   expect(2, y, "number")
   expect(3, z, "number")
@@ -300,11 +300,11 @@ function Movement.moveto(x, y, z, axis_order)
 
   if axis_order then
     if #axis_order ~= 3 then
-      error("Bad argument #4 to moveto: Expected a string of length 3, got " .. #axis_order, 2)
+      error("Bad argument #4 to moveTo: Expected a string of length 3, got " .. #axis_order, 2)
     end
 
     if not axis_order:match("^[xyz]+$") then
-      error("Bad argument #4 to moveto: Expected a string containing only 'x', 'y', and 'z', got " .. axis_order, 2)
+      error("Bad argument #4 to moveTo: Expected a string containing only 'x', 'y', and 'z', got " .. axis_order, 2)
     end
 
     local axes = {}
@@ -312,7 +312,7 @@ function Movement.moveto(x, y, z, axis_order)
       if not axes[axis] then
         axes[axis] = true
       else
-        error("Bad argument #4 to moveto: Duplicate axis '" .. axis .. "' in order " .. axis_order, 2)
+        error("Bad argument #4 to moveTo: Duplicate axis '" .. axis .. "' in order " .. axis_order, 2)
       end
     end
   end

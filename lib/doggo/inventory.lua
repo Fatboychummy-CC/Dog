@@ -93,6 +93,7 @@ function Inventory.getDetailedItems()
 end
 
 
+
 --- Returns the number of free slots in the turtle's inventory.
 ---@return integer free_slots The number of free slots in the turtle's inventory.
 function Inventory.getFreeSlots()
