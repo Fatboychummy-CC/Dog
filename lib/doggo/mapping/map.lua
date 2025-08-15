@@ -13,6 +13,8 @@ local expect = require "cc.expect".expect
 ---@field walkable_cost integer The cost of walking on the map for a regular walkable node.
 ---@field unknown_cost integer The cost of walking on the map for an unknown node.
 ---@field data Doggo.Mapping.Map.Data The data for the map.
+---@field waypoints Doggo.Mapping.Map.Waypoint[] The waypoints for the map.
+---@field waypoints_lookup Doggo.Mapping.Map.Waypoint[][][] The waypoints structured as a lookup table.
 ---@field package __SENTINEL table Sentinel value for detecting whether or not Map methods are being used correctly.
 local Map = {
   __SENTINEL = {}
@@ -27,6 +29,8 @@ local map_mt = {
 ---@field walkable boolean Whether the block can be walked on.
 ---@field unknown boolean Whether the block is unknown. Used for saving/loading.
 ---@field cost number The cost of moving through the block. By default, unknown blocks have a cost of 5, but are marked walkable.
+---@field is_waypoint boolean Whether or not this position resolves to a waypoint. Not saved.
+---@field waypoint Doggo.Mapping.Map.Waypoint? The waypoint associated with this position, if any. Not saved.
 
 ---@alias Doggo.Mapping.Map.Data Doggo.Mapping.Map.DataX[]
 ---@alias Doggo.Mapping.Map.DataX Doggo.Mapping.Map.DataY[]
@@ -279,6 +283,27 @@ function Map:resize(width, height, depth)
     end
   end
 end
+
+
+
+--- Adds a waypoint to the map.
+---@param self Doggo.Mapping.Map
+---@param waypoint Doggo.Mapping.Map.Waypoint The waypoint to add.
+function Map:addWaypoint(waypoint)
+  sentinel(self)
+  expect(2, waypoint, "table")
+
+  table.insert(self.waypoints, waypoint)
+end
+
+
+
+---@TODO Allow splicing maps together (this does not fully *combine* them, just allows them to access each-other as if they were a single map.)
+---@TODO Allow rotating maps in any direction (90 degree steps).
+---@TODO Allow flipping maps along all axes.
+---@TODO Add map searching for block IDs.
+---@TODO Add waypoint/landmark system for turtle navigation checkpoints.
+---@TODO Add support for temporary obstacles (other turtles, players).
 
 
 
