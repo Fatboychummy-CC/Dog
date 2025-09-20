@@ -6,6 +6,18 @@
 ---@field last_fuel integer|"unlimited" The last amount of fuel the turtle had. Used for recovering from errors, if partway through a movement.
 ---@field last_action Doggo.Movement.Actions The last action the turtle performed. Used for recovering from errors, if partway through a movement.
 
+---@class Doggo.Movement.Parameters
+---@field fail_type Doggo.Movement.FailTypes What to do when a movement action fails.
+---@field fail_action function|nil A user-defined action to call when a movement action fails and `fail_type` is "action".
+---@field max_retries integer The maximum number of times to retry a movement action before giving up. Only applies if `fail_type` is "retry" or "action".
+---@field retry_delay integer The number of seconds to wait between retries. Only applies if `fail_type` is "retry" or "action".
+
+---@alias Doggo.Movement.FailTypes
+---| "stop" # Stop movement on failure.
+---| "retry" # Retry the action until it succeeds.
+---| "ignore" # Ignore the failure and continue.
+---| "action" # Call a user-defined action on failure.
+
 ---@alias Doggo.Movement.Actions
 ---| "none" # No action has been performed yet.
 ---| "forward" # The turtle moved forward.
@@ -31,6 +43,7 @@ local state_file = data_dir:file("doggo_movement_state.lson")
 
 ---@class Doggo.Movement
 ---@field state Doggo.Movement.State The current movement state of the turtle.
+---@field parameters Doggo.Movement.Parameters The movement parameters.
 local Movement = {
   ---@enum Doggo.Movement.Orientation
   Orientation = {
@@ -50,7 +63,13 @@ local Movement = {
     orientation = 0, -- Facing North by default
     last_fuel = turtle.getFuelLevel(),
     last_action = "none",
-  }
+  },
+  parameters = {
+    fail_type = "retry",
+    fail_action = nil,
+    max_retries = 5,
+    retry_delay = 1,
+  },
 }
 
 
@@ -64,7 +83,7 @@ end
 
 --- Loads the movement state from a file, if it exists.
 function Movement.load()
-  local state = state_file:deserialize(Movement.state)
+  local state = state_file:unserialize(Movement.state)
 
   ---@TODO Verify the state.
   ---@TODO Recover state based on fuel level.
@@ -112,7 +131,23 @@ local function do_movement(action, func, callback_success)
   Movement.state.last_fuel = turtle.getFuelLevel()
   Movement.save()
 
-  local success, reason = func()
+  local success, reason
+  for _ = 1, Movement.parameters.max_retries do
+    success, reason = func()
+    if success or Movement.parameters.fail_type == "ignore" then
+      break
+    end
+    if Movement.parameters.fail_type == "stop" then
+      error("Movement action failed: " .. tostring(reason), 2)
+    end
+    if Movement.parameters.fail_type == "action" and Movement.parameters.fail_action then
+      Movement.parameters.fail_action(action, reason)
+    end
+
+    -- If we reach here, fail type is "retry" or "action".
+    sleep(Movement.parameters.retry_delay)
+  end
+
   if not success then
     Movement.state.last_action = "done"
     Movement.save()
@@ -327,6 +362,23 @@ function Movement.moveTo(x, y, z, axis_order)
     else
       error("Invalid axis in order: " .. axis, 2)
     end
+  end
+end
+
+
+
+--- Moves the turtle n times in the specified direction.
+---@param n integer The number of blocks to move.
+---@param direction Doggo.Movement.Orientation? The direction to move in. If nil, moves in the current facing direction.
+function Movement.move(n, direction)
+  expect(1, n, "number")
+  expect(2, direction, "number", "nil")
+
+  direction = direction or Movement.state.orientation
+
+  Movement.face(direction)
+  for i = 1, n do
+    Movement.turtle.forward()
   end
 end
 

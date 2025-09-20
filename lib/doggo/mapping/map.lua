@@ -1,20 +1,16 @@
 --- Map. Map. Map.
 
 local expect = require "cc.expect".expect
+local Chunk = require "doggo.mapping.chunk"
+local Position = require "doggo.mapping.position"
 
 ---@class Doggo.Mapping.Map
 ---@field name string The name of the map.
----@field width integer The width of the map, in blocks.
----@field height integer The height of the map, in blocks.
----@field depth integer The depth of the map, in blocks.
----@field x_offset integer The x offset of the map, in blocks. Can be used in tandem with GPS to use real positions.
----@field y_offset integer The y offset of the map, in blocks. Can be used in tandem with GPS to use real positions.
----@field z_offset integer The z offset of the map, in blocks. Can be used in tandem with GPS to use real positions.
----@field walkable_cost integer The cost of walking on the map for a regular walkable node.
----@field unknown_cost integer The cost of walking on the map for an unknown node.
----@field data Doggo.Mapping.Map.Data The data for the map.
+---@field offset ccTweaked.Vector The world offset of the chunk at 0,0,0.
+---@field data Doggo.Mapping.Chunk[][][] The chunks structured as a 3D array.
 ---@field waypoints Doggo.Mapping.Map.Waypoint[] The waypoints for the map.
----@field waypoints_lookup Doggo.Mapping.Map.Waypoint[][][] The waypoints structured as a lookup table.
+---@field waypoints_locations Doggo.Mapping.Map.Waypoint[][][] The waypoints structured as a lookup table of x, y, z coordinates.
+---@field waypoints_ids table<string, Doggo.Mapping.Map.Waypoint> The waypoints structured as a lookup table of names.
 ---@field package __SENTINEL table Sentinel value for detecting whether or not Map methods are being used correctly.
 local Map = {
   __SENTINEL = {}
@@ -23,19 +19,6 @@ local Map = {
 local map_mt = {
   __index = Map
 }
-
----@class Doggo.Mapping.Map.Node
----@field name string? The name of the block, or nil if loaded from a minified map.
----@field walkable boolean Whether the block can be walked on.
----@field unknown boolean Whether the block is unknown. Used for saving/loading.
----@field cost number The cost of moving through the block. By default, unknown blocks have a cost of 5, but are marked walkable.
----@field is_waypoint boolean Whether or not this position resolves to a waypoint. Not saved.
----@field waypoint Doggo.Mapping.Map.Waypoint? The waypoint associated with this position, if any. Not saved.
-
----@alias Doggo.Mapping.Map.Data Doggo.Mapping.Map.DataX[]
----@alias Doggo.Mapping.Map.DataX Doggo.Mapping.Map.DataY[]
----@alias Doggo.Mapping.Map.DataY Doggo.Mapping.Map.Node[]
-
 
 
 
@@ -47,241 +30,133 @@ end
 
 
 
---- Creates a 3-dimensional array that always returns an "unknown" node when the object does not exist.
----@return Doggo.Mapping.Map.Data
-local function new_map_data(map)
-
-  local innest_mt = {
-    __index = function(_, z)
-      return {
-        name = "doggo:unknown",
-        walkable = false,
-        cost = map.unknown_cost,
-      }
-    end
-  }
-  local inner_mt = {
-    __index = function(_, y, z)
-      return setmetatable({}, innest_mt)
-    end
-  }
-  local outer_mt = {
-    __index = function(_, x, y, z)
-      return setmetatable({}, inner_mt)
-    end
-  }
-
-  return setmetatable({}, outer_mt)
-end
-
-
-
---- Creates a new 3D map of the given size.
----
---- Note that it is better to use many small maps than one large one.
---- Note as well that you can resize your maps!
---- Note a third time that the map is 0-indexed!
----@param name string The name of the map, used to identify it.
----@param width integer The width of the map, in blocks.
----@param height integer The height of the map, in blocks.
----@param depth integer The depth of the map, in blocks.
-function Map.new(name, width, height, depth)
+--- Creates a new map.
+---@param name string The name of the map.
+---@param offset ccTweaked.Vector? The world offset of the chunk at 0,0,0. Defaults to (0,0,0).
+---@return Doggo.Mapping.Map
+function Map.new(name, offset)
   expect(1, name, "string")
-  expect(2, width, "number")
-  expect(3, height, "number")
-  expect(4, depth, "number")
+  expect(2, offset, "table", "nil")
 
-  local map = setmetatable(
-    {
-      name = name,
-      width = width,
-      height = height,
-      depth = depth,
-      x_offset = 0,
-      y_offset = 0,
-      z_offset = 0,
-      walkable_cost = 1,
-      unknown_cost = 5,
-    },
-    map_mt
-  )
+  offset = offset or Position.new(0, 0, 0)
 
-  map.data = new_map_data(map)
-
-  return map
-end
-
-
-
---- Sets the offset of the map. This offsets every input position by the map's offset.
---- Note that it needs to be *negative* offsets, for example, if the turtle is at 10, 20, 5, the offsets should be -10, -20, -5.
----@param self Doggo.Mapping.Map
----@param x integer The x offset, in blocks.
----@param y integer The y offset, in blocks.
----@param z integer The z offset, in blocks.
-function Map:setOffset(x, y, z)
-  sentinel(self)
-  expect(2, x, "number")
-  expect(3, y, "number")
-  expect(4, z, "number")
-
-  self.x_offset = x
-  self.y_offset = y
-  self.z_offset = z
-end
-
-
-
---- Sets the default cost of walkable blocks.
----@param self Doggo.Mapping.Map
----@param cost number The cost of walkable blocks.
-function Map:setWalkableCost(cost)
-  sentinel(self)
-  expect(2, cost, "number")
-
-  self.walkable_cost = cost
-end
-
-
-
---- Sets the default cost of unknown blocks.
----@param self Doggo.Mapping.Map
----@param cost number The cost of unknown blocks.
-function Map:setUnknownCost(cost)
-  sentinel(self)
-  expect(2, cost, "number")
-
-  self.unknown_cost = cost
-end
-
-
-
---- Pushes a new block to the map.
----@param self Doggo.Mapping.Map
----@param x integer The x position of the block, in blocks.
----@param y integer The y position of the block, in blocks.
----@param z integer The z position of the block, in blocks.
----@param walkable boolean Whether the block can be walked on.
----@param name string? The name, if known.
-function Map:pushBlock(x, y, z, walkable, name)
-  sentinel(self)
-  expect(2, x, "number")
-  expect(3, y, "number")
-  expect(4, z, "number")
-  expect(5, walkable, "boolean")
-  expect(6, name, "string", true)
-
-  if x < 0 or y < 0 or z < 0 or x > self.width or y > self.height or z > self.depth then
-    return -- Do nothing.
+  if not Position.isValid(offset) then
+    error("Invalid offset", 2)
   end
 
-  if not self.data[x] then
-    self.data[x] = {}
-  end
-  if not self.data[x][y] then
-    self.data[x][y] = {}
+  if offset.x % 1 ~= 0 or offset.y % 1 ~= 0 or offset.z % 1 ~= 0 then
+    error("Offsets must be integers", 2)
   end
 
-  self.data[x][y][z] = {
-    name = name or "doggo:unknown",
-    walkable = walkable,
-    unknown = false,
-    cost = self.walkable_cost,
-  }
+  local self = setmetatable({
+    name = name,
+    offset = offset,
+    data = {},
+    waypoints = {},
+    waypoints_locations = {},
+    waypoints_ids = {},
+  }, map_mt)
+
+  return self
 end
-Map.set = Map.pushBlock -- Short alias.
 
 
 
---- Sets a position to unknown.
+--- Adds a new chunk to the map, at the given chunk position.
 ---@param self Doggo.Mapping.Map
----@param x integer The x position of the block, in blocks.
----@param y integer The y position of the block, in blocks.
----@param z integer The z position of the block, in blocks.
-function Map:setUnknown(x, y, z)
+---@param position ccTweaked.Vector The position of the chunk in chunk coordinates.
+---@return Doggo.Mapping.Chunk chunk The newly created chunk.
+function Map:addChunk(position)
   sentinel(self)
-  expect(2, x, "number")
-  expect(3, y, "number")
-  expect(4, z, "number")
+  expect(1, position, "table")
 
-  local block = self:getBlock(x, y, z)
-  if block then
-    block.unknown = true
+  if not Position.isValid(position) then
+    error("Invalid position", 2)
   end
+
+  if self.data[position.x] and
+     self.data[position.x][position.y] and
+     self.data[position.x][position.y][position.z] then
+    error("Chunk already exists at this position", 2)
+  end
+
+  local chunk = Chunk.new(position)
+  self.data[position.x] = self.data[position.x] or {}
+  self.data[position.x][position.y] = self.data[position.x][position.y] or {}
+  self.data[position.x][position.y][position.z] = chunk
+
+  return chunk
 end
-Map.unset = Map.setUnknown -- Short alias.
 
 
---- Gets the block at a given position.
+
+--- Get the chunk at the given chunk position.
 ---@param self Doggo.Mapping.Map
----@param x integer The x position of the block, in blocks.
----@param y integer The y position of the block, in blocks.
----@param z integer The z position of the block, in blocks.
----@return Doggo.Mapping.Map.Node
-function Map:getBlock(x, y, z)
+---@param position ccTweaked.Vector The position of the chunk in chunk coordinates.
+---@return Doggo.Mapping.Chunk? chunk The chunk at the given position, or nil if it doesn't exist.
+function Map:getChunk(position)
   sentinel(self)
-  expect(2, x, "number")
-  expect(3, y, "number")
-  expect(4, z, "number")
+  expect(1, position, "table")
 
-  return self.data[x][y][z]
+  if not Position.isValid(position) then
+    error("Invalid position", 2)
+  end
+
+  if not self.data[position.x] or
+     not self.data[position.x][position.y] then
+    return nil
+  end
+
+  return self.data[position.x][position.y][position.z]
 end
-Map.at = Map.getBlock -- Short alias.
 
 
 
---- Resizes the map, destroying anything outside the new bounds.
+--- Inserts a block into the map at the given world position.
 ---@param self Doggo.Mapping.Map
----@param width integer The new width of the map, in blocks.
----@param height integer The new height of the map, in blocks.
----@param depth integer The new depth of the map, in blocks.
-function Map:resize(width, height, depth)
+---@param position ccTweaked.Vector The world position of the block.
+---@param walkable boolean Whether or not the block is walkable.
+---@param name string? The name of the block, or nil if unknown.
+function Map:addBlock(position, walkable, name)
   sentinel(self)
-  expect(2, width, "number")
-  expect(3, height, "number")
-  expect(4, depth, "number")
+  expect(1, position, "table")
+  expect(2, walkable, "boolean")
+  expect(3, name, "string", "nil")
 
-  self.width = width
-  self.height = height
-  self.depth = depth
-
-  local marked = {}
-
-  for x, Xs in pairs(self.data) do
-    if x > width then
-      marked[x] = true
-    else
-      for y, Ys in pairs(Xs) do
-        if y > height then
-          if not marked[x] then marked[x] = {} end
-          marked[x][y] = true
-        else
-          for z, _ in pairs(Ys) do
-            if z > depth then
-              if not marked[x][y] then marked[x][y] = {} end
-              marked[x][y][z] = true
-            end
-          end
-        end
-      end
-    end
+  if not Position.isValid(position) then
+    error("Invalid position", 2)
   end
 
-  for x, Xs in pairs(marked) do
-    if type(Xs) == "table" then
-      for y, Ys in pairs(Xs) do
-        if type(Ys) == "table" then
-          for z in pairs(Ys) do
-            self.data[x][y][z] = nil -- Remove the block.
-          end
-        else
-          self.data[x][y] = nil -- Remove the whole section.
-        end
-      end
-    else
-      self.data[x] = nil -- Remove the whole section.
-    end
+  local chunk_coords = Position.worldToChunkCoordinates(position)
+  local chunk = self:getChunk(chunk_coords)
+  if not chunk then
+    chunk = self:addChunk(chunk_coords)
   end
+
+  chunk:addBlock(position, walkable, name)
+end
+
+
+
+--- Gets the block at the given world position.
+---@param self Doggo.Mapping.Map
+---@param position ccTweaked.Vector The world position of the block.
+---@return Doggo.Mapping.Chunk.BlockData block The block data.
+function Map:getBlock(position)
+  sentinel(self)
+  expect(1, position, "table")
+
+  if not Position.isValid(position) then
+    error("Invalid position", 2)
+  end
+
+  local chunk_coords = Position.worldToChunkCoordinates(position)
+  local chunk = self:getChunk(chunk_coords)
+  if not chunk then
+    return Chunk.unknownBlock(position)
+  end
+
+  return chunk:getBlock(position)
 end
 
 
@@ -291,19 +166,90 @@ end
 ---@param waypoint Doggo.Mapping.Map.Waypoint The waypoint to add.
 function Map:addWaypoint(waypoint)
   sentinel(self)
-  expect(2, waypoint, "table")
+  expect(1, waypoint, "table")
+
+  if not Position.isValid(waypoint.position) then
+    error("Invalid waypoint position", 2)
+  end
 
   table.insert(self.waypoints, waypoint)
+
+  local pos = waypoint.position
+  self.waypoints_locations[pos.x] = self.waypoints_locations[pos.x] or {}
+  self.waypoints_locations[pos.x][pos.y] = self.waypoints_locations[pos.x][pos.y] or {}
+  self.waypoints_locations[pos.x][pos.y][pos.z] = waypoint
 end
 
 
 
----@TODO Allow splicing maps together (this does not fully *combine* them, just allows them to access each-other as if they were a single map.)
----@TODO Allow rotating maps in any direction (90 degree steps).
----@TODO Allow flipping maps along all axes.
----@TODO Add map searching for block IDs.
----@TODO Add waypoint/landmark system for turtle navigation checkpoints.
----@TODO Add support for temporary obstacles (other turtles, players).
+--- Removes a waypoint from the map.
+---@param self Doggo.Mapping.Map
+---@param waypoint Doggo.Mapping.Map.Waypoint The waypoint to remove.
+function Map:removeWaypoint(waypoint)
+  sentinel(self)
+  expect(1, waypoint, "table")
+
+  local pos = waypoint.position
+  if self.waypoints_locations[pos.x] and
+     self.waypoints_locations[pos.x][pos.y] and
+     self.waypoints_locations[pos.x][pos.y][pos.z] == waypoint then
+    -- Remove the waypoint from the lookup table
+    self.waypoints_locations[pos.x][pos.y][pos.z] = nil
+
+    -- Clean up empty tables
+    if not next(self.waypoints_locations[pos.x][pos.y]) then
+      self.waypoints_locations[pos.x][pos.y] = nil
+    end
+    if not next(self.waypoints_locations[pos.x]) then
+      self.waypoints_locations[pos.x] = nil
+    end
+  end
+
+  local index
+  for i, wp in ipairs(self.waypoints) do
+    if wp == waypoint then
+      index = i
+      break
+    end
+  end
+
+  if not index then
+    return
+  end
+
+  table.remove(self.waypoints, index)
+end
+
+
+
+--- Get waypoints within a given range.
+---@param self Doggo.Mapping.Map
+---@param position ccTweaked.Vector The center position.
+---@param range number The range to search within.
+---@return Doggo.Mapping.Map.Waypoint[] waypoints The waypoints within the given range.
+function Map:getWaypointsInRange(position, range)
+  sentinel(self)
+  expect(1, position, "table")
+  expect(2, range, "number")
+
+  if not Position.isValid(position) then
+    error("Invalid position", 2)
+  end
+
+  if range < 0 then
+    error("Range must be non-negative", 2)
+  end
+
+  local waypoints_in_range = {}
+
+  for _, waypoint in ipairs(self.waypoints) do
+    if (position - waypoint.position):length() <= range then
+      table.insert(waypoints_in_range, waypoint)
+    end
+  end
+
+  return waypoints_in_range
+end
 
 
 
