@@ -3,9 +3,9 @@
 local to_get = {
   "extern:dog.lua:https://raw.githubusercontent.com/Fatboychummy-CC/Dog/refresh/dog.lua",
   "extern:lib/turtle_aid.lua:https://raw.githubusercontent.com/Fatboychummy-CC/Dog/refresh/lib/turtle_aid.lua",
-  "lib/file_helper.lua:file_helper.lua",
-  "lib/logging.lua:logging.lua",
-  "lib/simple_argparse.lua:simple_argparse.lua",
+  "L:lib/file_helper.lua:file_helper.lua",
+  "L:lib/logging.lua:logging.lua",
+  "L:lib/simple_argparse.lua:simple_argparse.lua",
 }
 local program_name = "Dog"
 local pinestore_id = 200 -- Set this to the ID of the pinestore project if you wish to note to pinestore that a download has occurred.
